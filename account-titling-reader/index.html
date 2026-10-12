@@ -254,6 +254,30 @@ function blank() {
 const blankParty = () => ({ name: "", role: "", dob: "", taxId: "", address: "", notes: "", ref: "" });
 const blankBene = () => ({ level: "Primary", name: "", relationship: "", percentage: "", dob: "", taxId: "", perStirpes: false, notes: "", ref: "" });
 
+// One row per person: entries with the same name (ignoring case, spacing and punctuation)
+// become one, with every role listed. Names spelled differently stay separate, so a
+// spelling conflict stays visible.
+function mergeParties(list) {
+  const key = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const joinUnique = (a, b, sep) => {
+    const parts = [...a.split(sep), ...b.split(sep)].map(s => s.trim()).filter(Boolean);
+    const seen = new Map();
+    for (const s of parts) if (!seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s);
+    return [...seen.values()].join(sep);
+  };
+  const out = [], byName = new Map();
+  for (const p of list) {
+    const k = key(p.name);
+    const m = k && byName.get(k);
+    if (!m) { out.push(p); if (k) byName.set(k, p); continue; }
+    m.role = joinUnique(m.role, p.role, ", ");
+    m.notes = joinUnique(m.notes, p.notes, "; ");
+    m.ref = joinUnique(m.ref, p.ref, "; ");
+    for (const f of ["dob", "taxId", "address"]) if (!m[f]) m[f] = p[f];
+  }
+  return out;
+}
+
 function normalize(raw, fileName) {
   const r = blank();
   raw = raw && typeof raw === "object" ? raw : {};
@@ -262,9 +286,9 @@ function normalize(raw, fileName) {
   r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" };
   const g = raw.registration || {};
   for (const k of Object.keys(r.registration)) r.registration[k] = str(g[k]);
-  r.parties = (Array.isArray(raw.parties) ? raw.parties : []).map(p => {
+  r.parties = mergeParties((Array.isArray(raw.parties) ? raw.parties : []).map(p => {
     const b = blankParty(); for (const k of Object.keys(b)) b[k] = str(p?.[k]); return b;
-  });
+  }));
   r.beneficiaries = (Array.isArray(raw.beneficiaries) ? raw.beneficiaries : []).map(p => {
     const b = blankBene();
     for (const k of ["name","relationship","dob","taxId","notes","ref"]) b[k] = str(p?.[k]);
@@ -381,7 +405,7 @@ function renderEditor() {
       partyRows.append(el("div", { class: "row" },
         el("div", { class: "grid" },
           field("Name", p, "name", { wide: true, id: `p${i}-name` }),
-          field("Role", p, "role", { list: "dlRole", id: `p${i}-role` }),
+          field("Role(s)", p, "role", { list: "dlRole", id: `p${i}-role`, placeholder: "e.g. Grantor, Trustee" }),
           field("Date of birth", p, "dob", { mono: true, id: `p${i}-dob` }),
           field("SSN / TIN", p, "taxId", { mono: true, id: `p${i}-tid` }),
           field("Address", p, "address", { wide: true, id: `p${i}-addr` }),
@@ -746,7 +770,7 @@ REGISTRATION
 - source.docType: one of ${DOC_TYPES.join("; ")}. source.docDate: the date the document was signed or, for a statement, the statement period end.
 
 PARTIES
-- One entry per person per role. Roles: ${ROLES.join("; ")}.
+- One entry per person. If a person holds several roles, list them all in that entry's role, separated by ", ", most important first (e.g. "Grantor, Trustee"). Roles: ${ROLES.join("; ")}. Their notes and ref cover every role (e.g. "Co-trustee now; sole trustee if the other trustor dies (Sec. 10.3)").
 - Include owners, grantors, current trustees, successor trustees, POA agents, signers, executors, custodians, minors and entity officers. Witnesses, notaries and the drafting attorney are not parties.
 - A trustee or owner the document says has died, resigned or been removed: keep them only if needed to explain succession, and say so in notes.
 - Successor trustees: in order of succession, with the order and the trigger in notes (e.g. "1st successor; acts if both current trustees cease to act").
