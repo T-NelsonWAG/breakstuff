@@ -12,7 +12,7 @@ Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (private Claude art
   1. **First read** (`PROMPT`): extracts the fields as JSON.
   2. **Double-check** (`VERIFY_INTRO`, optional): checks every value against the document and lists its corrections.
   3. **Handwriting close-up** (`ZOOM_INTRO`): reads high-resolution crops of handwritten fill-ins and fixes the fields that depend on them.
-- Scans longer than one request's image limit are transcribed in batches first, then read as text. Pages are drawn just before their batch is sent, and the transcription copies word for word only what account opening needs (parties, dates, trustees and succession, beneficiaries, signing authority, signatures), replacing other boilerplate with `[summary: …]` lines.
+- Scans longer than one request's image limit are transcribed in batches first, then read as text.
 - Records are stored in the artifact's shared database (`extractions` collection). Uploaded files are not saved.
 - For text-only reads (text PDFs, Word, pasted text, batch-transcribed scans), the text Claude read is kept in `sources/<record id>` (split into `parts/<n>` under the 256 KiB document cap). The Re-read button on a saved record runs the extraction again from it, keeping team notes and the SharePoint link. Deleting a record deletes its saved text.
 
