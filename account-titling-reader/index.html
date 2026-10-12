@@ -240,7 +240,7 @@ const str = (v) => (v == null ? "" : String(v).trim());
 function blank() {
   return {
     household: "",
-    source: { fileName: "", docType: "", docDate: "", sharepointUrl: "", readNote: "", textSaved: false },
+    source: { fileName: "", docType: "", docDate: "", sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" },
     registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", governingState: "", accountNumber: "", signingAuthority: "" },
     parties: [],
     beneficiaries: [],
@@ -259,7 +259,7 @@ function normalize(raw, fileName) {
   raw = raw && typeof raw === "object" ? raw : {};
   r.household = str(raw.household);
   const s = raw.source || {};
-  r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), sharepointUrl: "", readNote: "", textSaved: false };
+  r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" };
   const g = raw.registration || {};
   for (const k of Object.keys(r.registration)) r.registration[k] = str(g[k]);
   r.parties = (Array.isArray(raw.parties) ? raw.parties : []).map(p => {
@@ -348,6 +348,8 @@ function renderEditor() {
       return wrap;
     })(),
     d.source.readNote ? el("p", { class: "small muted", text: d.source.readNote }) : null,
+    isNew && current.reused && lastFile && sample ? el("div", {}, el("button", { class: "linkbtn", type: "button", id: "freshBtn", text: "Read this file from scratch instead",
+      onclick: () => handleFile(lastFile, true) })) : null,
     !isNew && sample && !d.source.textSaved ? el("p", { class: "small muted", text: "The document text wasn't kept for this record (it was read from page images, or saved before Re-read existed). To read it again, upload the document." }) : null,
     checkNote(d.check)
   );
@@ -793,7 +795,9 @@ function pageList(nums) {
 
 async function renderPageJpeg(page) {
   const vp1 = page.getViewport({ scale: 1 });
-  const vp = page.getViewport({ scale: Math.min(2.2, 1500 / vp1.width) });
+  // Claude sees each image at about 1.2 megapixels whatever is sent, so drawing larger only
+  // costs render and upload time.
+  const vp = page.getViewport({ scale: Math.min(2.2, Math.sqrt(1_250_000 / (vp1.width * vp1.height))) });
   const c = document.createElement("canvas"); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
   const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
@@ -804,12 +808,26 @@ async function renderPageJpeg(page) {
 // (no text, or a full-page image under an OCR layer) go as page images, because
 // scan OCR is unreliable and often missing. Pages over the image limit fall back
 // to their OCR text, marked as such.
-async function readPdf(file) {
+async function openPdf(file) {
   if (typeof pdfjsLib === "undefined") throw { user: "The PDF reader didn't load. Reload the page and try again, or paste the text instead." };
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-  let pdf;
-  try { pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise; }
+  try { return await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise; }
   catch (e) { throw { user: e?.name === "PasswordException" ? "This PDF is password-protected. Remove the password and upload it again." : "This PDF couldn't be opened. It may be damaged." }; }
+}
+
+// High-resolution page canvas for the handwriting close-ups.
+const pdfCanvas = (pdf) => async (n) => {
+  const page = await pdf.getPage(n);
+  const vp1 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: Math.min(3, 2400 / vp1.width) });
+  const c = document.createElement("canvas"); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return c;
+};
+
+async function readPdf(file) {
+  const pdf = await openPdf(file);
   const OPS = pdfjsLib.OPS;
   const IMG_OPS = new Set([OPS.paintImageXObject, OPS.paintJpegXObject, OPS.paintImageXObjectRepeat].filter(v => v != null));
   const N = pdf.numPages;
@@ -819,14 +837,17 @@ async function readPdf(file) {
     const page = await pdf.getPage(i);
     const tc = await page.getTextContent();
     const text = tc.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join("").replace(/[ \t]+\n/g, "\n").trim();
-    let bigImage = false;
-    try {
-      const ol = await page.getOperatorList();
-      for (let k = 0; k < ol.fnArray.length && !bigImage; k++) {
-        if (IMG_OPS.has(ol.fnArray[k])) { const a = ol.argsArray[k] || []; if ((a[1] || 0) * (a[2] || 0) >= 1_000_000) bigImage = true; }
-      }
-    } catch { /* treat as text page */ }
     const letters = (text.match(/[A-Za-z]/g) || []).length;
+    // The operator list (slow) only matters for a page with text: is it a scan under an OCR layer?
+    let bigImage = false;
+    if (letters >= 80) {
+      try {
+        const ol = await page.getOperatorList();
+        for (let k = 0; k < ol.fnArray.length && !bigImage; k++) {
+          if (IMG_OPS.has(ol.fnArray[k])) { const a = ol.argsArray[k] || []; if ((a[1] || 0) * (a[2] || 0) >= 1_000_000) bigImage = true; }
+        }
+      } catch { /* treat as text page */ }
+    }
     info.push({ n: i, page, text, scanned: bigImage || letters < 80 });
   }
 
@@ -838,9 +859,17 @@ async function readPdf(file) {
   const rank = (p) => (p.text.length < 80 ? 0 : 1) * 10 + (p.n <= 3 || p.n > N - 3 ? 0 : 1);
   const chosen = new Set(scanned.slice().sort((a, b) => rank(a) - rank(b) || a.n - b.n).slice(0, max).map(p => p.n));
 
+  // Batched scans render each page just before its batch goes out, so Claude starts on the
+  // first pages while later ones are still being drawn.
+  const lazy = !!imageLimits && chosen.size > imageLimits.maxCount;
   const images = [], imagePages = [], textPages = [], ocrPages = [], skipped = [];
   let body = "";
   for (const p of info) {
+    if (lazy && chosen.has(p.n)) {
+      imagePages.push(p.n);
+      body += `\n\n--- Page ${p.n}: see image ${imagePages.length} ---`;
+      continue;
+    }
     if (p.scanned && chosen.has(p.n)) {
       setBusy(`Preparing scanned page ${p.n} of ${N}…`);
       const blob = await renderPageJpeg(p.page);
@@ -858,7 +887,7 @@ async function readPdf(file) {
       body += `\n\n--- Page ${p.n}: not available ---`;
     }
   }
-  if (!images.length && !textPages.length && !ocrPages.length) {
+  if (!imagePages.length && !textPages.length && !ocrPages.length) {
     throw { user: imageLimits ? "No readable pages were found in this PDF." : "This PDF is a scan, and this view can't send page images to Claude. Upload a text PDF, or paste the text instead." };
   }
   const note = [
@@ -867,16 +896,8 @@ async function readPdf(file) {
     ocrPages.length ? `${pageList(ocrPages)} from scan OCR only` : "",
     skipped.length ? `${pageList(skipped)} not read` : ""
   ].filter(Boolean).join("; ");
-  const getCanvas = async (n) => {
-    const page = await pdf.getPage(n);
-    const vp1 = page.getViewport({ scale: 1 });
-    const vp = page.getViewport({ scale: Math.min(3, 2400 / vp1.width) });
-    const c = document.createElement("canvas"); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
-    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    return c;
-  };
-  return { text: body, images, pages: N, imagePages, ocrPages, skipped, getCanvas, readNote: `${N}-page PDF: ${note}.` };
+  const renderImage = lazy ? async (n) => renderPageJpeg(await pdf.getPage(n)) : null;
+  return { text: body, images, pages: N, imagePages, ocrPages, skipped, getCanvas: pdfCanvas(pdf), renderImage, readNote: `${N}-page PDF: ${note}.` };
 }
 
 async function readAny(file) {
@@ -955,6 +976,19 @@ function cropBand(canvas, area) {
   return new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
 }
 
+async function makeCrops(use, getCanvas) {
+  const crops = [], labels = [], canvases = new Map();
+  for (const s of use) {
+    if (!canvases.has(s.page)) canvases.set(s.page, await getCanvas(s.page));
+    const cv = canvases.get(s.page); if (!cv) continue;
+    const blob = await cropBand(cv, s.area);
+    if (blob && (!imageLimits.maxInputBytes || blob.size <= imageLimits.maxInputBytes)) {
+      crops.push(blob); labels.push(`crop ${crops.length} = page ${s.page}, ${s.area} of page${s.what ? ` (${s.what})` : ""}`);
+    }
+  }
+  return { crops, labels };
+}
+
 function handwritingSpots(...raws) {
   const seen = new Map();
   for (const raw of raws) {
@@ -983,6 +1017,10 @@ Reply with only the transcription.`;
 async function transcribeScans(content, signal) {
   const per = Math.max(1, imageLimits.maxCount);
   const byPage = new Map(content.imagePages.map((p, i) => [p, content.images[i]]));
+  const imageFor = async (p) => {
+    if (!byPage.get(p) && content.renderImage) byPage.set(p, await content.renderImage(p));
+    return byPage.get(p);
+  };
   const got = new Map();
   const chunk = (pages) => { const out = []; for (let i = 0; i < pages.length; i += per) out.push(pages.slice(i, i + per)); return out; };
   let calls = 0;
@@ -999,8 +1037,11 @@ async function transcribeScans(content, signal) {
         const pages = batches[next++];
         const map = pages.map((p, i) => `image ${i + 1} = page ${p}`).join(", ");
         try {
+          const imgs = [];
+          for (const p of pages) imgs.push(await imageFor(p));
+          if (signal?.aborted) throw { code: "cancelled" };
           calls++;
-          const r = await sample(`${TRANSCRIBE_INTRO}\n\nPages attached, in order: ${map}.`, { signal, modelTier: "default", images: pages.map(p => byPage.get(p)) });
+          const r = await sample(`${TRANSCRIBE_INTRO}\n\nPages attached, in order: ${map}.`, { signal, modelTier: "default", images: imgs });
           const parts = (r?.text || "").split(/^\s*=+\s*PAGE\s+(\d+)\s*=+\s*$/im);
           for (let i = 1; i < parts.length; i += 2) {
             const n = parseInt(parts[i], 10), t = (parts[i + 1] || "").trim();
@@ -1023,7 +1064,7 @@ async function transcribeScans(content, signal) {
   const read = content.imagePages.filter(p => got.has(p));
   const readNote = content.readNote.replace(/pages? [\d–, ]+ read as images/,
     `page${read.length > 1 ? "s" : ""} ${pageList(read)} transcribed from page images in ${calls} call${calls > 1 ? "s" : ""}`);
-  return { ...content, text, images: [], imagePages: [], skipped: [...(content.skipped || []), ...missed].sort((a, b) => a - b), readNote };
+  return { ...content, text, images: [], imagePages: [], renderImage: null, skipped: [...(content.skipped || []), ...missed].sort((a, b) => a - b), readNote };
 }
 
 // keep: a saved record being re-read from its stored text. Its id, team notes and
@@ -1036,7 +1077,7 @@ async function extract(content, fileName, keep) {
   const ctl = readCtl = new AbortController();
   const doubleCheck = $("dblCheck").checked;
   try {
-    if (imageLimits?.maxCount && content.images?.length > imageLimits.maxCount) content = await transcribeScans(content, ctl.signal);
+    if (content.renderImage || (imageLimits?.maxCount && content.images?.length > imageLimits.maxCount)) content = await transcribeScans(content, ctl.signal);
     let text = (content.text || "").trim();
     const flags = [];
     const cutShort = text.length > MAX_TEXT || content.truncated === true;
@@ -1053,6 +1094,14 @@ async function extract(content, fileName, keep) {
     setBusy(`Reading ${pages}…`);
     const first = await sample.json([...doc, PROMPT].join("\n\n"), opts(content.images));
     let raw = first;
+
+    // Start cutting the handwriting close-ups now, from the first read's spots, so they are
+    // ready when the double-check returns. Redone below only if the double-check moves them.
+    const zoomLimit = imageLimits ? Math.min(imageLimits.maxCount, 12) : 0;
+    const canZoom = !!(zoomLimit && content.getCanvas);
+    const spotKey = (list) => list.slice(0, zoomLimit).map(s => s.page + ":" + s.area).join("|");
+    const earlySpots = canZoom ? handwritingSpots(first) : [];
+    const earlyCrops = earlySpots.length ? makeCrops(earlySpots.slice(0, zoomLimit), content.getCanvas).catch(() => null) : null;
 
     let check = { status: "skipped", changes: [] };
     if (doubleCheck) {
@@ -1078,21 +1127,13 @@ async function extract(content, fileName, keep) {
     // Zoom in on handwriting: crops at high resolution, read in a focused pass.
     let zoomNote = "";
     const spots = handwritingSpots(first, raw);
-    if (spots.length && imageLimits && content.getCanvas) {
-      const limit = Math.min(imageLimits.maxCount, 12);
-      const use = spots.slice(0, limit);
+    if (spots.length && canZoom) {
+      const use = spots.slice(0, zoomLimit);
       setBusy(`Zooming in on ${use.length} handwritten spot${use.length > 1 ? "s" : ""}…`);
       try {
-        const crops = [], labels = [], canvases = new Map();
-        for (const s of use) {
-          if (!canvases.has(s.page)) canvases.set(s.page, await content.getCanvas(s.page));
-          const cv = canvases.get(s.page); if (!cv) continue;
-          const blob = await cropBand(cv, s.area);
-          if (blob && (!imageLimits.maxInputBytes || blob.size <= imageLimits.maxInputBytes)) {
-            crops.push(blob); labels.push(`crop ${crops.length} = page ${s.page}, ${s.area} of page${s.what ? ` (${s.what})` : ""}`);
-          }
-        }
-        canvases.clear();
+        let prepared = earlyCrops ? await earlyCrops : null;
+        if (!prepared || spotKey(earlySpots) !== spotKey(spots)) prepared = await makeCrops(use, content.getCanvas);
+        const { crops, labels } = prepared;
         if (crops.length) {
           const zoomed = await sample.json([
             ZOOM_INTRO,
@@ -1123,14 +1164,15 @@ async function extract(content, fileName, keep) {
     data.flags = [...flags, ...data.flags];
     if (keep) {
       data.notes = keep.data.notes;
-      Object.assign(data.source, { fileName: keep.data.source.fileName, sharepointUrl: keep.data.source.sharepointUrl, textSaved: true });
+      Object.assign(data.source, { fileName: keep.data.source.fileName, sharepointUrl: keep.data.source.sharepointUrl, textSaved: true, fileHash: keep.data.source.fileHash || "" });
       data.source.readNote = `Re-read ${fmtDate(new Date().toISOString())} from the saved document text. ${content.readNote || ""}`.trim();
       current = { ...keep, data, srcText: null };
     } else {
       // Keep what Claude read, so a saved record can be re-read without the file. Only
       // text-only reads qualify: a read that sent page images has no complete text.
       const savable = !content.images?.length;
-      current = { id: null, data, srcText: savable ? { text, readNote: content.readNote || "", skipped: content.skipped || [], ocrPages: content.ocrPages || [], truncated: cutShort } : null };
+      data.source.fileHash = content.fileHash || "";
+      current = { id: null, data, reused: !!content.reusedFrom, srcText: savable ? { text, readNote: content.readNote || "", skipped: content.skipped || [], ocrPages: content.ocrPages || [], truncated: cutShort } : null };
     }
     dirty = true; pendingOpen = null;
     renderEditor(); renderLog();
@@ -1151,14 +1193,39 @@ function confirmReplace() {
   return false;
 }
 
-async function handleFile(file) {
+// Fingerprint of the file's bytes: the same file uploaded again matches a saved record.
+async function fileHash(file) {
+  try {
+    const d = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+  } catch { return ""; }
+}
+
+// A saved record read from this exact PDF, whose text was kept with every page read.
+async function reusableRead(file, hash) {
+  const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
+  const match = hash && db && isPdf ? records.find(r => r.data.source.fileHash === hash && r.data.source.textSaved) : null;
+  if (!match) return null;
+  setBusy("Loading the earlier read of this file…");
+  const saved = await loadSourceText(match.id).catch(() => null);
+  if (!saved?.text.trim() || saved.skipped.length) return null;
+  const pdf = await openPdf(file);
+  return { ...saved, getCanvas: pdfCanvas(pdf), reusedFrom: match.id,
+    readNote: `Reused the text read from this same file on ${fmtDate(match.createdAt)}, so the pages weren't transcribed again. ${saved.readNote.replace(/^Reused the text read[\s\S]*?transcribed again\.\s*/, "")}`.trim() };
+}
+
+let lastFile = null;
+async function handleFile(file, fresh) {
   if (!file) return;
-  if (dirty && current && !confirmReplace()) { $("fileIn").value = ""; return; }
+  if (!fresh && dirty && current && !confirmReplace()) { $("fileIn").value = ""; return; }
   replaceArmed = true; // already confirmed for this pass
+  lastFile = file;
   showErr("");
   setBusy("Opening file…");
   try {
-    const content = await readAny(file);
+    const hash = await fileHash(file);
+    const content = (!fresh && await reusableRead(file, hash)) || await readAny(file);
+    content.fileHash = hash;
     if (!content.text?.trim() && !content.images?.length) throw { user: "No readable text was found in this file." };
     await extract(content, file.name);
   } catch (e) {
