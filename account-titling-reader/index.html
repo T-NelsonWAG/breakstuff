@@ -240,7 +240,7 @@ const str = (v) => (v == null ? "" : String(v).trim());
 function blank() {
   return {
     household: "",
-    source: { fileName: "", docType: "", docDate: "", sharepointUrl: "", readNote: "" },
+    source: { fileName: "", docType: "", docDate: "", sharepointUrl: "", readNote: "", textSaved: false },
     registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", governingState: "", accountNumber: "", signingAuthority: "" },
     parties: [],
     beneficiaries: [],
@@ -259,7 +259,7 @@ function normalize(raw, fileName) {
   raw = raw && typeof raw === "object" ? raw : {};
   r.household = str(raw.household);
   const s = raw.source || {};
-  r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), sharepointUrl: "", readNote: "" };
+  r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), sharepointUrl: "", readNote: "", textSaved: false };
   const g = raw.registration || {};
   for (const k of Object.keys(r.registration)) r.registration[k] = str(g[k]);
   r.parties = (Array.isArray(raw.parties) ? raw.parties : []).map(p => {
@@ -348,6 +348,7 @@ function renderEditor() {
       return wrap;
     })(),
     d.source.readNote ? el("p", { class: "small muted", text: d.source.readNote }) : null,
+    !isNew && sample && !d.source.textSaved ? el("p", { class: "small muted", text: "The document text wasn't kept for this record (it was read from page images, or saved before Re-read existed). To read it again, upload the document." }) : null,
     checkNote(d.check)
   );
   ed.append(src);
@@ -471,7 +472,14 @@ function renderEditor() {
   const saveBtn = el("button", { class: "btn primary", type: "button", id: "saveBtn", text: isNew ? "Save to team log" : "Save changes" });
   saveBtn.addEventListener("click", () => save(saveBtn));
   const closeBtn = el("button", { class: "btn", type: "button", text: isNew ? "Discard" : "Close", onclick: closeEditor });
-  const acts = el("div", { class: "actions" }, saveBtn, closeBtn, el("span", { class: "spacer" }));
+  const acts = el("div", { class: "actions" }, saveBtn, closeBtn);
+  if (!isNew && sample && d.source.textSaved) {
+    const rr = el("button", { class: "btn", type: "button", id: "rereadBtn", text: "Re-read",
+      title: "Read the saved document text again with Claude. Team notes and the SharePoint link are kept." });
+    rr.addEventListener("click", () => reread(rr));
+    acts.append(rr);
+  }
+  acts.append(el("span", { class: "spacer" }));
   if (!isNew) {
     const del = el("button", { class: "btn danger", type: "button", text: "Delete record" });
     let armT;
@@ -482,7 +490,10 @@ function renderEditor() {
         return;
       }
       clearTimeout(armT); del.disabled = true;
-      try { await db.doc("extractions/" + current.id).delete(); dirty = false; toast("Record deleted"); closeEditor(true); }
+      try {
+        const id = current.id;
+        await db.doc("extractions/" + id).delete(); dirty = false;
+        deleteSourceText(id).catch(() => {}); toast("Record deleted"); closeEditor(true); }
       catch (e) { del.disabled = false; toast(dbMsg(e)); }
     });
     acts.append(del);
@@ -532,6 +543,56 @@ function cleanForSave(d) {
   return out;
 }
 
+// ---------- saved document text ----------
+// What Claude read, kept per record so it can be re-read without the file. Stored apart
+// from the log (sources/<record id>, in parts that stay under the 256 KiB document cap) so
+// the log stays light; only a re-read loads it.
+const SRC_PART = 60000;
+async function saveSourceText(id, src) {
+  const n = Math.max(1, Math.ceil(src.text.length / SRC_PART));
+  for (let i = 0; i < n; i++) await db.doc(`sources/${id}/parts/${i}`).set({ text: src.text.slice(i * SRC_PART, (i + 1) * SRC_PART) });
+  await db.doc("sources/" + id).set({ parts: n, readNote: src.readNote, skipped: src.skipped, ocrPages: src.ocrPages, truncated: src.truncated, savedAt: new Date().toISOString() });
+}
+async function loadSourceText(id) {
+  const meta = await db.doc("sources/" + id).get();
+  if (!meta.exists) return null;
+  const m = meta.data();
+  let text = "";
+  for (let i = 0; i < (m.parts || 0); i++) {
+    const p = await db.doc(`sources/${id}/parts/${i}`).get();
+    if (!p.exists) return null;
+    text += p.data().text || "";
+  }
+  return { text, images: [], readNote: str(m.readNote), skipped: Array.isArray(m.skipped) ? m.skipped : [], ocrPages: Array.isArray(m.ocrPages) ? m.ocrPages : [], truncated: m.truncated === true };
+}
+async function deleteSourceText(id) {
+  const meta = await db.doc("sources/" + id).get();
+  const n = meta.exists ? (meta.data().parts || 0) : 0;
+  for (let i = 0; i < n; i++) await db.doc(`sources/${id}/parts/${i}`).delete();
+  await db.doc("sources/" + id).delete();
+}
+
+let rereadArmed = null;
+async function reread(btn) {
+  if (!sample || !db || !current?.id || readCtl) return;
+  if (dirty && rereadArmed !== current.id) {
+    rereadArmed = current.id; toast("Re-reading replaces your unsaved edits. Click Re-read again to continue.");
+    setTimeout(() => { rereadArmed = null; }, 5000); return;
+  }
+  rereadArmed = null; btn.disabled = true; showErr(""); setBusy("Loading the saved document text…");
+  let content;
+  try { content = await loadSourceText(current.id); }
+  catch (e) { setBusy(""); btn.disabled = false; toast(dbMsg(e)); return; }
+  if (!content?.text.trim()) {
+    setBusy(""); btn.disabled = false;
+    showErr("The saved text for this record is missing. Upload the document again to re-read it.");
+    return;
+  }
+  const keep = current;
+  await extract(content, keep.data.source.fileName, keep);
+  if (current === keep) btn.disabled = false;
+}
+
 async function save(btn) {
   if (!db) return;
   const d = current.data;
@@ -548,9 +609,20 @@ async function save(btn) {
       toast("Changes saved");
     } else {
       body.createdAt = now; body.createdBy = myId; body.updatedAt = now; body.updatedBy = myId;
+      const src = current.srcText;
+      body.source.textSaved = !!src;
       const ref = await db.collection("extractions").add(body);
+      let msg = "Saved to team log";
+      if (src) {
+        try { await saveSourceText(ref.id, src); }
+        catch (e) {
+          body.source.textSaved = false;
+          await db.doc("extractions/" + ref.id).update({ source: body.source }).catch(() => {});
+          msg = "Saved to team log, but the document text couldn't be kept, so Re-read won't be available";
+        }
+      }
       current = { id: ref.id, data: normalizeSaved(body), createdAt: now, createdBy: myId, updatedAt: now, updatedBy: myId };
-      toast("Saved to team log");
+      toast(msg);
     }
     dirty = false;
     renderEditor(); renderLog();
@@ -954,9 +1026,11 @@ async function transcribeScans(content, signal) {
   return { ...content, text, images: [], imagePages: [], skipped: [...(content.skipped || []), ...missed].sort((a, b) => a - b), readNote };
 }
 
-async function extract(content, fileName) {
+// keep: a saved record being re-read from its stored text. Its id, team notes and
+// SharePoint link stay; the extracted fields are replaced.
+async function extract(content, fileName, keep) {
   if (!sample) return;
-  if (dirty && current && !confirmReplace()) return;
+  if (!keep && dirty && current && !confirmReplace()) return;
   showErr("");
   readCtl?.abort();
   const ctl = readCtl = new AbortController();
@@ -965,7 +1039,9 @@ async function extract(content, fileName) {
     if (imageLimits?.maxCount && content.images?.length > imageLimits.maxCount) content = await transcribeScans(content, ctl.signal);
     let text = (content.text || "").trim();
     const flags = [];
-    if (text.length > MAX_TEXT) { text = text.slice(0, MAX_TEXT); flags.push("Only the first part of this long document's text was read. Check the rest manually."); }
+    const cutShort = text.length > MAX_TEXT || content.truncated === true;
+    if (cutShort) text = text.slice(0, MAX_TEXT);
+    if (cutShort) { flags.push("Only the first part of this long document's text was read. Check the rest manually."); }
     const doc = docParts(content, text, fileName);
     const opts = (images, tier = "default") => {
       const o = { signal: ctl.signal, modelTier: tier };
@@ -1045,7 +1121,17 @@ async function extract(content, fileName) {
     if (content.skipped?.length) flags.push(`Page${content.skipped.length > 1 ? "s" : ""} ${pageList(content.skipped)} could not be read. Review ${content.skipped.length > 1 ? "them" : "it"} manually.`);
     if (content.ocrPages?.length) flags.push(`Page${content.ocrPages.length > 1 ? "s" : ""} ${pageList(content.ocrPages)} were read from scan OCR only (over the image limit). Verify names and dates from ${content.ocrPages.length > 1 ? "those pages" : "that page"}.`);
     data.flags = [...flags, ...data.flags];
-    current = { id: null, data };
+    if (keep) {
+      data.notes = keep.data.notes;
+      Object.assign(data.source, { fileName: keep.data.source.fileName, sharepointUrl: keep.data.source.sharepointUrl, textSaved: true });
+      data.source.readNote = `Re-read ${fmtDate(new Date().toISOString())} from the saved document text. ${content.readNote || ""}`.trim();
+      current = { ...keep, data, srcText: null };
+    } else {
+      // Keep what Claude read, so a saved record can be re-read without the file. Only
+      // text-only reads qualify: a read that sent page images has no complete text.
+      const savable = !content.images?.length;
+      current = { id: null, data, srcText: savable ? { text, readNote: content.readNote || "", skipped: content.skipped || [], ocrPages: content.ocrPages || [], truncated: cutShort } : null };
+    }
     dirty = true; pendingOpen = null;
     renderEditor(); renderLog();
     $("editor").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
