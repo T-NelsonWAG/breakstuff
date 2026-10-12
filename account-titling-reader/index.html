@@ -1076,8 +1076,18 @@ async function extract(content, fileName, keep) {
   readCtl?.abort();
   const ctl = readCtl = new AbortController();
   const doubleCheck = $("dblCheck").checked;
+  // Timing line for the read note: how long each step took, so slow runs can be traced.
+  const started = content.startedAt ?? performance.now();
+  let mark = performance.now();
+  const times = content.startedAt != null ? [["preparing", mark - content.startedAt]] : [];
+  const lap = (label) => { const now = performance.now(); times.push([label, now - mark]); mark = now; };
+  const clock = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  const timing = () => ` Read in ${clock(performance.now() - started)}: ${times.map(([l, ms]) => `${l} ${clock(ms)}`).join(", ")}.`;
   try {
-    if (content.renderImage || (imageLimits?.maxCount && content.images?.length > imageLimits.maxCount)) content = await transcribeScans(content, ctl.signal);
+    if (content.renderImage || (imageLimits?.maxCount && content.images?.length > imageLimits.maxCount)) {
+      content = await transcribeScans(content, ctl.signal);
+      lap("transcription");
+    }
     let text = (content.text || "").trim();
     const flags = [];
     const cutShort = text.length > MAX_TEXT || content.truncated === true;
@@ -1093,6 +1103,7 @@ async function extract(content, fileName, keep) {
 
     setBusy(`Reading ${pages}…`);
     const first = await sample.json([...doc, PROMPT].join("\n\n"), opts(content.images));
+    lap("extraction");
     let raw = first;
 
     // Start cutting the handwriting close-ups now, from the first read's spots, so they are
@@ -1122,6 +1133,7 @@ async function extract(content, fileName, keep) {
         if (e?.code === "cancelled") throw e;
         check = { status: "failed", changes: [] };
       }
+      lap("double-check");
     }
 
     // Zoom in on handwriting: crops at high resolution, read in a focused pass.
@@ -1154,10 +1166,11 @@ async function extract(content, fileName, keep) {
         if (e?.code === "cancelled") throw e;
         zoomNote = " Close-up handwriting read didn't finish; check handwritten dates and names.";
       }
+      lap("handwriting");
     }
 
     const data = normalize(raw, fileName);
-    data.source.readNote = (content.readNote || "") + zoomNote;
+    data.source.readNote = (content.readNote || "") + zoomNote + timing();
     data.check = check;
     if (content.skipped?.length) flags.push(`Page${content.skipped.length > 1 ? "s" : ""} ${pageList(content.skipped)} could not be read. Review ${content.skipped.length > 1 ? "them" : "it"} manually.`);
     if (content.ocrPages?.length) flags.push(`Page${content.ocrPages.length > 1 ? "s" : ""} ${pageList(content.ocrPages)} were read from scan OCR only (over the image limit). Verify names and dates from ${content.ocrPages.length > 1 ? "those pages" : "that page"}.`);
@@ -1165,7 +1178,7 @@ async function extract(content, fileName, keep) {
     if (keep) {
       data.notes = keep.data.notes;
       Object.assign(data.source, { fileName: keep.data.source.fileName, sharepointUrl: keep.data.source.sharepointUrl, textSaved: true, fileHash: keep.data.source.fileHash || "" });
-      data.source.readNote = `Re-read ${fmtDate(new Date().toISOString())} from the saved document text. ${content.readNote || ""}`.trim();
+      data.source.readNote = `Re-read ${fmtDate(new Date().toISOString())} from the saved document text. ${content.readNote || ""}${timing()}`.trim();
       current = { ...keep, data, srcText: null };
     } else {
       // Keep what Claude read, so a saved record can be re-read without the file. Only
@@ -1223,9 +1236,11 @@ async function handleFile(file, fresh) {
   showErr("");
   setBusy("Opening file…");
   try {
+    const startedAt = performance.now();
     const hash = await fileHash(file);
     const content = (!fresh && await reusableRead(file, hash)) || await readAny(file);
     content.fileHash = hash;
+    content.startedAt = startedAt;
     if (!content.text?.trim() && !content.images?.length) throw { user: "No readable text was found in this file." };
     await extract(content, file.name);
   } catch (e) {
