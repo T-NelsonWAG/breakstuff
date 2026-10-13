@@ -141,6 +141,9 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
 .log-row.active { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
 .log-title { font-weight: 500; overflow-wrap: anywhere; }
 .log-sub { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; vertical-align: 2px; border: 1px solid currentColor; }
+.chip.draft { color: var(--warn); background: var(--warn-bg); }
+.chip.ok { color: var(--ok); }
 .log-when { font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .log-empty { padding: 20px 4px; color: var(--muted); font-size: 14px; border-bottom: 1px solid var(--rule); }
 @media (max-width: 520px) { .log-row { grid-template-columns: 1fr; } .log-when { text-align: left; } }
@@ -247,12 +250,86 @@ function blank() {
     flags: [],
     notes: "",
     check: null,
+    review: null,          // { status: "draft" | "reviewed", by, at } — set by the team log, never by Claude
     fyi: [],
     titleComposed: false
   };
 }
 const blankParty = () => ({ name: "", role: "", dob: "", taxId: "", address: "", notes: "", ref: "" });
 const blankBene = () => ({ level: "Primary", name: "", relationship: "", percentage: "", dob: "", taxId: "", perStirpes: false, notes: "", ref: "" });
+
+// ---------- name spelling check ----------
+// Done in code, not by Claude, so it runs the same way every time: the same surname with
+// first names one or two letters apart ("Jonathon" / "Jonathan") is flagged. Compares
+// the extracted names with each other and, when the document text is available, with
+// every spelling of those surnames anywhere in the document.
+const NAME_SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "esq"]);
+const NOT_FIRST_NAMES = new Set(["the", "and", "for", "said", "per", "mrs", "miss", "trust", "family", "estate", "descendants", "children"]);
+const titleCase = (s) => s.toLowerCase().replace(/(^|[\s'’-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+function parseName(name) {
+  const toks = str(name).replace(/[.,]/g, " ").split(/\s+/).filter(t => t && !NAME_SUFFIXES.has(t.toLowerCase()));
+  if (toks.length < 2) return null;
+  const first = toks[0], last = toks[toks.length - 1];
+  if (!/^[A-Za-z][A-Za-z'’-]+$/.test(first) || !/^[A-Za-z][A-Za-z'’-]{1,}$/.test(last)) return null;
+  return { first, mid: toks.length > 2 && toks[1].length === 1 ? toks[1].toUpperCase() : "", last };
+}
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = t;
+    }
+  }
+  return row[b.length];
+}
+function nameSpellingFlags(data, text) {
+  const people = [...data.parties, ...data.beneficiaries].map(p => { const n = parseName(p.name); return n && { ...n, dob: str(p.dob) }; }).filter(Boolean);
+  const groups = new Map();   // surname -> first name -> { first, mids, pages, extracted }
+  const add = (n, page, extracted) => {
+    const k = n.last.toLowerCase(), f = n.first.toLowerCase();
+    if (!groups.has(k)) groups.set(k, new Map());
+    const g = groups.get(k);
+    if (!g.has(f)) g.set(f, { first: titleCase(n.first), last: titleCase(n.last), mids: new Set(), dobs: new Set(), pages: new Set(), extracted: false });
+    const e = g.get(f);
+    if (n.mid) e.mids.add(n.mid);
+    if (n.dob) e.dobs.add(n.dob);
+    if (page) e.pages.add(page);
+    if (extracted) e.extracted = true;
+  };
+  for (const n of people) add(n, null, true);
+  if (text) {
+    const marks = [...text.matchAll(/--- Page (\d+)/g)].map(m => [m.index, +m[1]]);
+    const pageOf = (i) => { let p = null; for (const [pos, n] of marks) { if (pos > i) break; p = n; } return p; };
+    for (const last of new Set(people.map(n => n.last))) {
+      const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\b([A-Z][a-z]{2,}|[A-Z]{3,})\\s+(?:([A-Z])\\.?\\s+)?(?:${esc(titleCase(last))}|${esc(last.toUpperCase())})\\b`, "g");
+      for (const m of text.matchAll(re)) {
+        if (NOT_FIRST_NAMES.has(m[1].toLowerCase())) continue;
+        add({ first: m[1], mid: m[2] || "", last }, pageOf(m.index), false);
+      }
+    }
+  }
+  const show = (e) => `${e.first}${e.mids.size ? " " + [...e.mids][0] + "." : ""} ${e.last}`;
+  const pages = (e) => e.pages.size ? ` (p.${[...e.pages].sort((a, b) => a - b).slice(0, 4).join(", ")})` : "";
+  const out = [];
+  for (const g of groups.values()) {
+    const list = [...g.values()];
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      if (!a.extracted && !b.extracted) continue;   // at least one must be a person Claude listed
+      const dist = editDistance(a.first.toLowerCase(), b.first.toLowerCase());
+      if (dist < 1 || dist > (Math.min(a.first.length, b.first.length) >= 6 ? 2 : 1)) continue;
+      // Different middle initials, or different known birth dates: two real people.
+      if (a.mids.size && b.mids.size && ![...a.mids].some(x => b.mids.has(x))) continue;
+      if (a.dobs.size && b.dobs.size && ![...a.dobs].some(x => b.dobs.has(x))) continue;
+      out.push({ text: `Name spelled two ways: "${show(a)}"${pages(a)} and "${show(b)}"${pages(b)}. Confirm the legal spelling before opening the account.`, firsts: [a.first, b.first] });
+    }
+  }
+  return out;
+}
 
 // One row per person: entries with the same name (ignoring case, spacing and punctuation)
 // become one, with every role listed. Names spelled differently stay separate, so a
@@ -346,7 +423,9 @@ function renderEditor() {
 
   // head
   const head = el("div", { class: "editor-head" },
-    el("h2", { text: isNew ? "Check and save" : "Saved record" }),
+    el("div", { style: "display:flex;gap:10px;align-items:baseline;flex-wrap:wrap" },
+      el("h2", { text: isNew ? "Check and save" : "Saved record" }),
+      isNew ? null : statusChip(d)),
     el("span", { class: "meta", id: "edMeta" })
   );
   ed.append(head);
@@ -475,12 +554,12 @@ function renderEditor() {
   const flagList = el("ul", { class: "flags" });
   const drawFlags = () => {
     flagList.replaceChildren();
-    d.flags.forEach((f, i) => flagList.append(el("li", {}, el("span", { text: f }),
-      el("button", { class: "xbtn", type: "button", "aria-label": "Dismiss flag", title: "Dismiss", text: "×",
-        onclick: () => { d.flags.splice(i, 1); markDirty(); drawFlags(); } }))));
+    // Flags can't be removed: a reviewer records how each was resolved in Team notes.
+    d.flags.forEach(f => flagList.append(el("li", {}, el("span", { text: f }))));
     flagGroup.hidden = !d.flags.length;
   };
-  const flagGroup = el("div", { class: "group" }, el("h3", { text: "Check before opening" }), flagList);
+  const flagGroup = el("div", { class: "group" }, el("h3", { text: "Check before opening" }), flagList,
+    el("p", { class: "small muted", text: "Flags stay on the record. Before marking it reviewed, note in Team notes how each one was resolved." }));
   drawFlags();
   ed.append(flagGroup);
   if (d.fyi?.length) {
@@ -504,6 +583,12 @@ function renderEditor() {
       title: "Read the saved document text again with Claude. Team notes and the SharePoint link are kept." });
     rr.addEventListener("click", () => reread(rr));
     acts.append(rr);
+  }
+  if (!isNew && !isReviewed(d)) {
+    const rv = el("button", { class: "btn", type: "button", id: "reviewBtn", text: "Mark reviewed",
+      title: "Confirm every field has been checked against the document. Must be someone other than the person who saved or last edited it." });
+    rv.addEventListener("click", () => markReviewed(rv));
+    acts.append(rv);
   }
   acts.append(el("span", { class: "spacer" }));
   if (!isNew) {
@@ -540,12 +625,42 @@ function checkNote(check) {
 
 async function fillMeta() {
   const m = $("edMeta"); if (!m || !current?.id) return;
-  const ids = [current.createdBy, current.updatedBy].filter(Boolean);
+  const rv = current.data.review;
+  const ids = [current.createdBy, current.updatedBy, isReviewed(current.data) ? rv.by : null].filter(Boolean);
   const ps = user && ids.length ? await user.profiles(ids) : {};
   const who = (id) => (id && ps[id]?.name) || "a teammate";
   let t = `Saved ${fmtDate(current.createdAt)} by ${who(current.createdBy)}`;
   if (current.updatedAt && current.updatedAt !== current.createdAt) t += ` · edited ${fmtDate(current.updatedAt)} by ${who(current.updatedBy)}`;
+  t += isReviewed(current.data) ? ` · reviewed ${fmtDate(rv.at)} by ${who(rv.by)}` : " · not reviewed yet";
   m.textContent = t;
+}
+
+function statusChip(d) {
+  return isReviewed(d) ? el("span", { class: "chip ok", text: "Reviewed" }) : el("span", { class: "chip draft", text: "Draft" });
+}
+
+// Four-eyes review: someone other than the person who saved or last edited the record
+// confirms it against the document. Any later edit returns it to Draft (see save).
+async function markReviewed(btn) {
+  if (!db || !current?.id) return;
+  const d = current.data;
+  if (dirty) { toast("Save your changes first. Saving returns the record to Draft."); return; }
+  if (!myId) { toast("Your name couldn't be confirmed in this view, so the review can't be recorded."); return; }
+  if (myId === current.createdBy || myId === current.updatedBy) {
+    toast("A different teammate must review this. You saved or last edited it."); return;
+  }
+  if (d.flags.length && !str(d.notes)) {
+    toast(`This record has ${d.flags.length} flag${d.flags.length > 1 ? "s" : ""}. Note in Team notes how each was resolved, save, then mark it reviewed.`);
+    $("f-notes")?.focus(); return;
+  }
+  btn.disabled = true;
+  const review = { status: "reviewed", by: myId, at: new Date().toISOString() };
+  try {
+    await db.doc("extractions/" + current.id).update({ review });
+    d.review = review;
+    toast("Marked reviewed");
+    renderEditor(); renderLog();
+  } catch (e) { btn.disabled = false; toast(dbMsg(e)); }
 }
 
 function closeEditor(force) {
@@ -630,11 +745,16 @@ async function save(btn) {
     if (current.id) {
       body.createdAt = current.createdAt; body.createdBy = current.createdBy || null;
       body.updatedAt = now; body.updatedBy = myId;
+      // Any change to a reviewed record needs a fresh review.
+      const wasReviewed = isReviewed(d);
+      body.review = { status: "draft" };
       await db.doc("extractions/" + current.id).set(body);
       Object.assign(current, { updatedAt: now, updatedBy: myId });
-      toast("Changes saved");
+      d.review = body.review;
+      toast(wasReviewed ? "Changes saved. The record is back to Draft and needs a new review." : "Changes saved");
     } else {
       body.createdAt = now; body.createdBy = myId; body.updatedAt = now; body.updatedBy = myId;
+      body.review = { status: "draft" };
       const src = current.srcText;
       body.source.textSaved = !!src;
       const ref = await db.collection("extractions").add(body);
@@ -681,8 +801,13 @@ function normalizeSaved(raw) {
   r.check = raw.check && typeof raw.check === "object"
     ? { status: str(raw.check.status), changes: Array.isArray(raw.check.changes) ? raw.check.changes.map(str).filter(Boolean) : [] }
     : null;
+  r.review = raw.review && raw.review.status === "reviewed"
+    ? { status: "reviewed", by: str(raw.review.by), at: str(raw.review.at) }
+    : { status: "draft" };
   return JSON.parse(JSON.stringify(r));
 }
+
+const isReviewed = (d) => d?.review?.status === "reviewed";
 
 // ---------- log ----------
 function fmtDate(iso) {
@@ -720,7 +845,7 @@ async function renderLog() {
     const who = (r.createdBy && ps[r.createdBy]?.name) || "";
     return el("button", { type: "button", class: "log-row" + (current?.id === r.id ? " active" : ""), onclick: () => tryOpen(r) },
       el("div", { style: "display:grid;gap:2px;min-width:0" },
-        el("span", { class: "log-title", text: title }),
+        el("span", { class: "log-title" }, statusChip(d), " ", title),
         sub1 ? el("span", { class: "log-sub", text: sub1 }) : null,
         sub2 ? el("span", { class: "log-sub", text: sub2 }) : null),
       el("span", { class: "log-when", text: fmtDate(r.createdAt) + (who ? `\n${who}` : "") , style: "white-space:pre-line" })
@@ -1198,7 +1323,11 @@ async function extract(content, fileName, keep) {
     data.check = check;
     if (content.skipped?.length) flags.push(`Page${content.skipped.length > 1 ? "s" : ""} ${pageList(content.skipped)} could not be read. Review ${content.skipped.length > 1 ? "them" : "it"} manually.`);
     if (content.ocrPages?.length) flags.push(`Page${content.ocrPages.length > 1 ? "s" : ""} ${pageList(content.ocrPages)} were read from scan OCR only (over the image limit). Verify names and dates from ${content.ocrPages.length > 1 ? "those pages" : "that page"}.`);
-    data.flags = [...flags, ...data.flags];
+    // Code-level spelling check; skipped where Claude already flagged the same pair.
+    const nameFlags = nameSpellingFlags(data, text)
+      .filter(n => !data.flags.some(f => n.firsts.every(x => f.toLowerCase().includes(x.toLowerCase()))))
+      .map(n => n.text);
+    data.flags = [...flags, ...nameFlags, ...data.flags];
     if (keep) {
       data.notes = keep.data.notes;
       Object.assign(data.source, { fileName: keep.data.source.fileName, sharepointUrl: keep.data.source.sharepointUrl, textSaved: true, fileHash: keep.data.source.fileHash || "" });
@@ -1315,7 +1444,7 @@ async function boot() {
     if (current?.id && !dirty) {
       const fresh = records.find(r => r.id === current.id);
       if (!fresh) { current = null; renderEditor(); }
-      else if (fresh.updatedAt !== current.updatedAt) { current = { ...fresh, data: normalizeSaved(fresh.data) }; renderEditor(); }
+      else if (fresh.updatedAt !== current.updatedAt || JSON.stringify(fresh.data.review) !== JSON.stringify(current.data.review)) { current = { ...fresh, data: normalizeSaved(fresh.data) }; renderEditor(); }
     }
     renderLog();
   }, (e) => {
