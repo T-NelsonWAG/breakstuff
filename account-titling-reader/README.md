@@ -17,6 +17,12 @@ Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (private Claude art
 - Handwriting close-ups are cut while the double-check runs, and are recut only if the double-check changes the handwritten spots.
 - Records are stored in the artifact's shared database (`extractions` collection). Uploaded files are not saved.
 - Review: every saved record starts as **Draft**. "Mark reviewed" records who reviewed it and when (`review: {status, by, at}`); the reviewer must be someone other than the person who saved or last edited it, and a record with flags needs Team notes first. Any later edit returns it to Draft.
+- Marking reviewed also requires: account title, registration type, tax ID type and number, signing authority, at least one named party with a role, trust name/date/governing state for trust registrations, and each beneficiary level adding to 100%.
+- Saves are safe against two people editing at once: each save takes a short lease on the record, re-reads it, and refuses (naming who) if it changed since it was opened. Every save, creation and review is logged in `extractions/<id>/history` with field-by-field changes; tax IDs and account numbers are masked there.
+- Only the page owner or an Editor sees "Delete record" (page-level only: the database rules can't tell a delete from a save). Deleting removes the saved text first (stopping if that fails), then the history and the record, and logs the deletion in `deletions`.
+- "Mask SSNs and tax IDs" (top of the page, on by default, remembered per browser) shows only the last 4 digits and makes those fields read-only until turned off. Display only: full numbers are still stored.
+- Page references cite the PDF page and, when different, the printed one: "p.28 (printed 27)".
+- All flags are kept; the editor shows the first 4 with "Show N more flags", and the log shows each record's flag count.
 - Flags can't be removed from a record. A code-level check (`nameSpellingFlags`) adds a flag whenever the same surname appears with first names one or two letters apart, across the extracted names and the document text.
 - For text-only reads (text PDFs, Word, pasted text, batch-transcribed scans), the text Claude read is kept in `sources/<record id>` (split into `parts/<n>` under the 256 KiB document cap). The Re-read button on a saved record runs the extraction again from it, keeping team notes and the SharePoint link. Deleting a record deletes its saved text.
 
