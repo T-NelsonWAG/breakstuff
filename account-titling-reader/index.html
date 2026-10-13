@@ -645,8 +645,11 @@ function renderEditor() {
       const sum = list.reduce((a, b) => a + (parseFloat(b.percentage) || 0), 0);
       const known = list.every(b => b.percentage !== "");
       const ok = Math.abs(sum - 100) < 0.01;
-      totals.append(el("span", { class: known ? (ok ? "good" : "bad") : "bad",
-        text: `${lvl}: ${Math.round(sum * 100) / 100}%` + (known ? (ok ? "" : " (not 100%)") : " (some shares blank)") }));
+      // Contingent tiers may legitimately add past 100%, so that total is shown but not judged.
+      const tiers = lvl === "Contingent" && known && !ok;
+      totals.append(el("span", { class: tiers ? "" : known ? (ok ? "good" : "bad") : "bad",
+        text: `${lvl}: ${Math.round(sum * 100) / 100}%` + (tiers ? " (separate contingent tiers can add past 100%; explain how in a flag resolution or Team notes)"
+          : known ? (ok ? "" : " (not 100%)") : " (some shares blank)") }));
     }
   };
   const drawBenes = () => {
@@ -833,11 +836,11 @@ function missingForReview(d) {
   need(g.signingAuthority, "signing authority");
   if (/trust/i.test(g.registrationType)) { need(g.trustName, "trust name"); need(g.trustDate, "trust date"); need(g.governingState, "governing state"); }
   if (!d.parties.some(p => str(p.name) && str(p.role))) miss.push("at least one party with a name and role");
-  for (const lvl of ["Primary", "Contingent"]) {
-    const list = d.beneficiaries.filter(b => b.level === lvl && (str(b.name) || str(b.percentage)));
-    const sum = list.reduce((a, b) => a + (parseFloat(b.percentage) || 0), 0);
-    if (list.length && Math.abs(sum - 100) >= 0.01) miss.push(`${lvl.toLowerCase()} beneficiary shares adding to 100%`);
-  }
+  // Only Primary must total 100%. Contingent takers are conditional tiers (each child's
+  // descendants, then an ultimate taker), so they can add past 100%; the reviewer explains it.
+  const primary = d.beneficiaries.filter(b => b.level === "Primary" && (str(b.name) || str(b.percentage)));
+  const primarySum = primary.reduce((a, b) => a + (parseFloat(b.percentage) || 0), 0);
+  if (primary.length && Math.abs(primarySum - 100) >= 0.01) miss.push("primary beneficiary shares adding to 100%");
   // The source document must be one click away for whoever reviews or audits the record.
   if (!/^https:\/\//i.test(str(d.source.sharepointUrl))) miss.push("a SharePoint link to the document");
   const open = d.flags.filter(f => !flagNote(d, f)).length;
@@ -1245,13 +1248,13 @@ BENEFICIARIES (who receives the assets when the owner or last grantor dies)
 - relationship as stated (daughter, sister of grantor, etc.). Put the city and state in notes if given.
 - ref: page and article.
 
-FLAGS (blockers only, at most 4): things that would stop the account from being opened correctly or that a custodian would reject. Only these count: a required signature, notarization or witness missing; a name, date or trust name that conflicts between pages; beneficiary shares that do not total 100%; no trustee currently able to act; pages missing (page numbers skip) or an amendment the document refers to but does not include. One sentence each, with a page reference. A complete, signed document usually has [].
+FLAGS (blockers only, at most 4): things that would stop the account from being opened correctly or that a custodian would reject. Only these count: a required signature, notarization or witness missing; a name, date or trust name that conflicts between pages; primary beneficiary shares that do not total 100%; no trustee currently able to act; pages missing (page numbers skip) or an amendment the document refers to but does not include. One sentence each, with a page reference. A complete, signed document usually has [].
 
 FYI (at most 4, informational, not blockers): things worth knowing that do not stop the account, such as the document's age ("2009 document; confirm no later amendment or restatement"), the original held by a law firm, a blank or illegible Schedule A, a trust, estate or minor named as a contingent beneficiary, a springing POA, an estate that will need letters testamentary. One short sentence each, with a page reference. Never mention that the title was composed (use titleComposed), and never note standard boilerplate. An item goes in FLAGS or FYI, never both.
 
 HANDWRITING: list every handwritten fill-in that a field depends on (dates, day and month blanks, names, initials, numbers, checkboxes) in "handwriting": [{"page": 13, "area": "top", "what": "trust date in identification clause"}]. "page" is the PDF page number shown in this request (not the printed page number if they differ); "area" is "top", "middle" or "bottom" of that page (for a transcribed page, judge it from where the item falls in that page's text). List each once; there is no limit. Signatures need no entry unless a name must be read from one, and routine initials in a page footer need none. Use [] if there is no handwriting, or if the document came only as text.
 
-Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration); each beneficiary level totals 100 or a flag says why not.
+Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration); primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
 
 Reply with only JSON in exactly this shape:
 {"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","governingState":"","accountNumber":"","signingAuthority":""},"parties":[{"name":"","role":"","dob":"","taxId":"","address":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
