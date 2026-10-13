@@ -916,7 +916,7 @@ FLAGS (blockers only, at most 4): things that would stop the account from being 
 
 FYI (at most 4, informational, not blockers): things worth knowing that do not stop the account, such as the document's age ("2009 document; confirm no later amendment or restatement"), the original held by a law firm, a blank or illegible Schedule A, a trust, estate or minor named as a contingent beneficiary, a springing POA, an estate that will need letters testamentary. One short sentence each, with a page reference. Never mention that the title was composed (use titleComposed), and never note standard boilerplate. An item goes in FLAGS or FYI, never both.
 
-HANDWRITING: list every handwritten fill-in that a field depends on (dates, day and month blanks, names, initials, numbers, checkboxes) in "handwriting": [{"page": 13, "area": "top", "what": "trust date in identification clause"}]. "page" is the PDF page number shown in this request (not the printed page number if they differ); "area" is "top", "middle" or "bottom" of that page (for a transcribed page, judge it from where the item falls in that page's text). List each once, at most 12. Signatures need no entry unless a name must be read from one. Use [] if there is no handwriting, or if the document came only as text.
+HANDWRITING: list every handwritten fill-in that a field depends on (dates, day and month blanks, names, initials, numbers, checkboxes) in "handwriting": [{"page": 13, "area": "top", "what": "trust date in identification clause"}]. "page" is the PDF page number shown in this request (not the printed page number if they differ); "area" is "top", "middle" or "bottom" of that page (for a transcribed page, judge it from where the item falls in that page's text). List each once; there is no limit. Signatures need no entry unless a name must be read from one, and routine initials in a page footer need none. Use [] if there is no handwriting, or if the document came only as text.
 
 Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration); each beneficiary level totals 100 or a flag says why not.
 
@@ -1125,14 +1125,17 @@ function cropBand(canvas, area) {
   return new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
 }
 
+// Spots arrive sorted by page; only the current page's high-resolution canvas is kept,
+// so a long document with many spots doesn't hold every page in memory at once.
 async function makeCrops(use, getCanvas) {
-  const crops = [], labels = [], canvases = new Map();
+  const crops = [], labels = [];
+  let page = null, cv = null;
   for (const s of use) {
-    if (!canvases.has(s.page)) canvases.set(s.page, await getCanvas(s.page));
-    const cv = canvases.get(s.page); if (!cv) continue;
+    if (s.page !== page) { page = s.page; cv = await getCanvas(s.page); }
+    if (!cv) continue;
     const blob = await cropBand(cv, s.area);
     if (blob && (!imageLimits.maxInputBytes || blob.size <= imageLimits.maxInputBytes)) {
-      crops.push(blob); labels.push(`crop ${crops.length} = page ${s.page}, ${s.area} of page${s.what ? ` (${s.what})` : ""}`);
+      crops.push(blob); labels.push(`page ${s.page}, ${s.area} of page${s.what ? ` (${s.what})` : ""}`);
     }
   }
   return { crops, labels };
@@ -1257,11 +1260,11 @@ async function extract(content, fileName, keep) {
 
     // Start cutting the handwriting close-ups now, from the first read's spots, so they are
     // ready when the double-check returns. Redone below only if the double-check moves them.
-    const zoomLimit = imageLimits ? Math.min(imageLimits.maxCount, 12) : 0;
-    const canZoom = !!(zoomLimit && content.getCanvas);
-    const spotKey = (list) => list.slice(0, zoomLimit).map(s => s.page + ":" + s.area).join("|");
+    const perZoom = imageLimits?.maxCount || 0;   // crops per call; every spot is read, in batches
+    const canZoom = !!(perZoom && content.getCanvas);
+    const spotKey = (list) => list.map(s => s.page + ":" + s.area).join("|");
     const earlySpots = canZoom ? handwritingSpots(first) : [];
-    const earlyCrops = earlySpots.length ? makeCrops(earlySpots.slice(0, zoomLimit), content.getCanvas).catch(() => null) : null;
+    const earlyCrops = earlySpots.length ? makeCrops(earlySpots, content.getCanvas).catch(() => null) : null;
 
     let check = { status: "skipped", changes: [] };
     if (doubleCheck) {
@@ -1289,28 +1292,39 @@ async function extract(content, fileName, keep) {
     let zoomNote = "";
     const spots = handwritingSpots(first, raw);
     if (spots.length && canZoom) {
-      const use = spots.slice(0, zoomLimit);
-      setBusy(`Zooming in on ${use.length} handwritten spot${use.length > 1 ? "s" : ""}…`);
+      setBusy(`Preparing ${spots.length} handwritten spot${spots.length > 1 ? "s" : ""} for a close-up read…`);
       try {
         let prepared = earlyCrops ? await earlyCrops : null;
-        if (!prepared || spotKey(earlySpots) !== spotKey(spots)) prepared = await makeCrops(use, content.getCanvas);
+        if (!prepared || spotKey(earlySpots) !== spotKey(spots)) prepared = await makeCrops(spots, content.getCanvas);
         const { crops, labels } = prepared;
-        if (crops.length) {
-          const zoomed = await sample.json([
-            ZOOM_INTRO,
-            "ORIGINAL RULES:\n" + PROMPT,
-            `Crops attached: ${labels.join("; ")}.`,
-            "EXTRACTION:\n" + JSON.stringify(raw),
-            `Reply with only JSON: the extraction shape plus "changes": [].`
-          ].join("\n\n"), opts(crops, "complex"));
-          if (zoomed && typeof zoomed === "object" && (zoomed.registration || zoomed.parties)) {
-            raw = zoomed;
-            const ch = (Array.isArray(zoomed.changes) ? zoomed.changes : []).map(str).filter(Boolean);
-            check = { status: check.status === "skipped" ? "verified" : check.status, changes: [...check.changes, ...ch] };
-            zoomNote = ` Handwriting read up close in ${crops.length} spot${crops.length > 1 ? "s" : ""}.`;
+        // One call per batch of crops, in order: each batch corrects the extraction the
+        // previous batch returned, so every handwritten spot gets read up close.
+        let read = 0;
+        const missed = [];
+        for (let i = 0; i < crops.length; i += perZoom) {
+          const batch = crops.slice(i, i + perZoom), lbl = labels.slice(i, i + perZoom);
+          setBusy(`Reading handwriting up close: spot${batch.length > 1 ? "s" : ""} ${i + 1}${batch.length > 1 ? `–${i + batch.length}` : ""} of ${crops.length}…`);
+          try {
+            const zoomed = await sample.json([
+              ZOOM_INTRO,
+              "ORIGINAL RULES:\n" + PROMPT,
+              `Crops attached: ${lbl.map((l, k) => `crop ${k + 1} = ${l}`).join("; ")}.`,
+              "EXTRACTION:\n" + JSON.stringify(raw),
+              `Reply with only JSON: the extraction shape plus "changes": [].`
+            ].join("\n\n"), opts(batch, "complex"));
+            if (zoomed && typeof zoomed === "object" && (zoomed.registration || zoomed.parties)) {
+              raw = zoomed;
+              const ch = (Array.isArray(zoomed.changes) ? zoomed.changes : []).map(str).filter(Boolean);
+              check = { status: check.status === "skipped" ? "verified" : check.status, changes: [...check.changes, ...ch] };
+              read += batch.length;
+            } else missed.push(...lbl);
+          } catch (e) {
+            if (e?.code === "cancelled") throw e;
+            missed.push(...lbl);
           }
         }
-        if (spots.length > use.length) zoomNote += ` ${spots.length - use.length} more handwritten spot${spots.length - use.length > 1 ? "s were" : " was"} not zoomed.`;
+        if (read) zoomNote = ` Handwriting read up close in ${read} spot${read > 1 ? "s" : ""}.`;
+        if (missed.length) zoomNote += ` Close-up read didn't finish for ${missed.length} handwritten spot${missed.length > 1 ? "s" : ""} (${missed.map(l => l.replace(/ of page.*$/, "")).join("; ")}); check those against the document.`;
       } catch (e) {
         if (e?.code === "cancelled") throw e;
         zoomNote = " Close-up handwriting read didn't finish; check handwritten dates and names.";

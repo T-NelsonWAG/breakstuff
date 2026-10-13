@@ -11,7 +11,7 @@ Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (private Claude art
 - Claude reads the document in up to three passes:
   1. **First read** (`PROMPT`): extracts the fields as JSON.
   2. **Double-check** (`VERIFY_INTRO`, optional): checks every value against the document and lists its corrections.
-  3. **Handwriting close-up** (`ZOOM_INTRO`): reads high-resolution crops of handwritten fill-ins and fixes the fields that depend on them.
+  3. **Handwriting close-up** (`ZOOM_INTRO`): reads high-resolution crops of every handwritten fill-in a field depends on, in batches of the per-call image limit, one batch after another, and fixes the fields that depend on them. Routine per-page footer initials are not included.
 - Scans longer than one request's image limit are transcribed in batches first, word for word, then read as text. Each page is drawn just before its batch is sent, at the ~1.2 MP Claude actually sees.
 - Uploads are fingerprinted (SHA-256, `source.fileHash`). Uploading a PDF that matches a saved record with kept text and no unread pages reuses that text instead of transcribing again; "Read this file from scratch instead" forces a fresh read.
 - Handwriting close-ups are cut while the double-check runs, and are recut only if the double-check changes the handwritten spots.
