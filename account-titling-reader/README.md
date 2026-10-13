@@ -24,7 +24,8 @@ Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (private Claude art
 - Page references cite the PDF page and, when different, the printed one: "p.28 (printed 27)".
 - All flags are kept, including through Re-read (earlier flags and their resolution notes carry forward). The editor shows the first 4 with "Show N more flags"; the log shows each record's flag count and unresolved count, and can be filtered to Draft, Reviewed, or records with unresolved flags.
 - A code-level check (`nameSpellingFlags`) flags: the same surname with first names one or two letters apart; common nicknames under one surname (Bill / William); and the same first name with surnames one or two letters apart (Doe / Dow), across the extracted names and the document text. Pairs with different middle initials or known, different birth dates are skipped.
-- Controls are enforced by the page only. Give Contributor access only to the people who process accounts.
+- Access rules (published with the page): client records, their history, saved document text and the deletion log can be read and written only at Contributor level or above. Viewers see the page but not the team log, with a message explaining why.
+- Review, flag and delete rules are enforced by the page; a Contributor could change data directly, so Contributor access is the boundary.
 - For text-only reads (text PDFs, Word, pasted text, batch-transcribed scans), the text Claude read is kept in `sources/<record id>` (split into `parts/<n>` under the 256 KiB document cap). The Re-read button on a saved record runs the extraction again from it, keeping team notes and the SharePoint link. Deleting a record deletes its saved text.
 
 ## Runtime

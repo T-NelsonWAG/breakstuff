@@ -483,6 +483,7 @@ function normalize(raw, fileName) {
 // ---------- state ----------
 let db = null, sample = null, user = null, myId = null, imageLimits = null;
 let canDelete = false;       // page owner or Editor only (set in boot)
+let canWrite = null;         // false: a Viewer, who can't see the team log under the access rules
 let current = null;          // { id: string|null, data, createdAt?, createdBy? }
 let dirty = false;
 let records = [];            // log snapshot
@@ -692,10 +693,15 @@ function renderEditor() {
     // Flags can't be removed. Each one gets its own resolution note, required before review.
     const shown = showAllFlags ? d.flags : d.flags.slice(0, FLAGS_SHOWN);
     shown.forEach((f, i) => {
-      const note = el("input", { type: "text", id: `flag-note-${i}`, autocomplete: "off",
-        placeholder: "e.g. Confirmed the legal spelling with the client; using the name on the ID" });
-      note.value = flagNote(d, f);
-      note.addEventListener("input", () => { setFlagNote(d, f, note.value); markDirty(); countFlags(); });
+      const nid = `flag-note-${i}`, saved = flagNote(d, f);
+      let note;
+      if (ID_PATTERN.test(saved) && !revealed.has(nid)) note = maskedControl(nid, maskText(saved), false);
+      else {
+        note = el("input", { type: "text", id: nid, autocomplete: "off",
+          placeholder: "e.g. Confirmed the legal spelling with the client; using the name on the ID" });
+        note.value = saved;
+        note.addEventListener("input", () => { setFlagNote(d, f, note.value); markDirty(); countFlags(); });
+      }
       flagList.append(el("li", {}, el("span", { text: maskText(f) }),
         el("label", { class: "resolve" }, el("span", { text: "How was this resolved?" }), note)));
     });
@@ -770,14 +776,15 @@ function renderEditor() {
       try {
         const id = current.id, title = d.registration.accountTitle || d.household || "Untitled record";
         await deleteSourceText(id);
-        if (KEEP_HISTORY_ON_DELETE) await addHistory(id, { action: "deleted", title });
+        await db.doc("extractions/" + id).delete();
+        dirty = false;
+        // Logged only once the record is really gone.
+        let logged = true;
+        if (KEEP_HISTORY_ON_DELETE) logged = await addHistory(id, { action: "deleted", title });
         else {
           const hist = await db.collection(`extractions/${id}/history`).get();
           for (const h of hist.docs) await db.doc(`extractions/${id}/history/${h.id}`).delete();
         }
-        await db.doc("extractions/" + id).delete();
-        dirty = false;
-        let logged = true;
         await db.collection("deletions").add({ recordId: id, title, by: myId, at: new Date().toISOString() }).catch(() => { logged = false; });
         toast(logged ? "Record deleted" : "Record deleted, but the deletion couldn't be logged");
         closeEditor(true);
@@ -1147,6 +1154,7 @@ async function renderLog() {
     : fv === "flags" ? r.data.flags.some(f => !flagNote(r.data, f)) : true;
   const list = records.filter(r => keep(r) && (!q || haystack(r).includes(q)));
   $("logCount").textContent = records.length ? `· ${records.length} record${records.length === 1 ? "" : "s"}` : "";
+  if (canWrite === false) { log.replaceChildren(el("div", { class: "log-empty", text: "The team log holds client records and is open only to the account-processing team. Ask the page owner for Contributor access if you need it." })); return; }
   if (!db) { log.replaceChildren(el("div", { class: "log-empty", text: "The team log isn't available in this view. Open the page signed in to claude.ai to see and save records." })); return; }
   if (!records.length) { log.replaceChildren(el("div", { class: "log-empty", text: "No records yet. Read a document above and choose Save to team log. Saved records appear here for everyone on the team." })); return; }
   if (!list.length) {
@@ -1772,12 +1780,21 @@ async function boot() {
   db = dbNs; sample = sampleNs; user = userNs;
   if (user) myId = await user.id();
   try { canDelete = !!user && ((await user.isOwner()) || (await user.canEdit())); } catch { canDelete = false; }
+  try { canWrite = user ? await user.can("data.write") : null; } catch { canWrite = null; }
   if (sample) {
     try { imageLimits = (await sample.limits())?.images || null; } catch { imageLimits = null; }
   } else {
     $("noClaude").hidden = false; $("drop").hidden = true;
   }
   if (!db) { renderLog(); if (current) renderEditor(); return; }
+  if (canWrite === false) {
+    // Client records are readable only at Contributor level and above (see the db rules
+    // published with the page), so a Viewer would otherwise see an empty log.
+    db = null;
+    renderLog();
+    if (current) renderEditor();
+    return;
+  }
   if (current) renderEditor();
   db.collection("extractions").orderBy("createdAt", "desc").limit(1000).onSnapshot((snap) => {
     records = snap.docs.map(doc => {
