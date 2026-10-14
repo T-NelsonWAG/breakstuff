@@ -226,6 +226,8 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 (() => {
 "use strict";
@@ -483,6 +485,7 @@ function normalize(raw, fileName) {
 // ---------- state ----------
 let db = null, sample = null, user = null, myId = null, imageLimits = null;
 let canDelete = false;       // page owner or Editor only (set in boot)
+let downloads = null;        // viewer's save prompt, for the PDF export (null: not available here)
 let canWrite = null;         // false: a Viewer, who can't see the team log under the access rules
 let current = null;          // { id: string|null, data, createdAt?, createdBy? }
 let dirty = false;
@@ -755,6 +758,12 @@ function renderEditor() {
     rv.addEventListener("click", () => markReviewed(rv));
     acts.append(rv);
   }
+  if (downloads) {
+    const ex = el("button", { class: "btn", type: "button", id: "exportBtn", text: "Export PDF",
+      title: "Save this record as a PDF table. It includes full SSNs, tax IDs and account numbers." });
+    ex.addEventListener("click", () => exportPdf(ex));
+    acts.append(ex);
+  }
   acts.append(el("span", { class: "spacer" }));
   if (!isNew && db) {
     const list = el("ul", { class: "hist" });
@@ -923,7 +932,7 @@ async function addHistory(id, entry) {
   try { await db.collection(`extractions/${id}/history`).add({ at: new Date().toISOString(), by: myId, ...entry }); return true; }
   catch { return false; }
 }
-const HIST_ACTIONS = { created: "Saved to the team log", edited: "Edited", reviewed: "Marked reviewed", deleted: "Deleted" };
+const HIST_ACTIONS = { created: "Saved to the team log", edited: "Edited", reviewed: "Marked reviewed", deleted: "Deleted", exported: "Exported to PDF (full tax IDs)" };
 // Retention: keep a deleted record's change history (no full tax IDs) as its audit trail.
 // Set to false only if the firm's retention rule calls for removing it with the record.
 const KEEP_HISTORY_ON_DELETE = true;
@@ -965,6 +974,109 @@ async function markReviewed(btn) {
     toast(logged ? "Marked reviewed" : "Marked reviewed, but the change history couldn't be updated");
     renderEditor(); renderLog();
   } catch (e) { btn.disabled = false; toast(dbMsg(e)); }
+}
+
+// ---------- PDF export ----------
+// One record as tables: registration, parties, beneficiaries, flags with resolutions,
+// good-to-know, notes. Full SSNs, tax IDs and account numbers (team decision); every page
+// is marked confidential, and exports of saved records are logged in the change history.
+function buildRecordPdf(d, meta) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 36;
+  const ink = [27, 33, 36], accent = [31, 95, 122], muted = [93, 104, 112];
+  const title = d.registration.accountTitle || d.household || "Untitled record";
+  const t = (v) => str(v) || "";
+  const chrome = () => {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(168, 50, 45);
+    doc.text("CONFIDENTIAL: contains full SSNs, tax IDs and account numbers. Handle as client data.", M, 22);
+    doc.setFont("helvetica", "normal"); doc.setTextColor(...muted);
+    doc.text(`Exported ${meta.exportedAt} by ${meta.exportedBy}`, W - M, 22, { align: "right" });
+    doc.text(`Page ${doc.internal.getNumberOfPages()}`, W - M, H - 18, { align: "right" });
+    doc.text("Account Titling Reader", M, H - 18);
+  };
+  const section = (label, y) => {
+    if (y > H - 90) { doc.addPage(); y = 50; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...ink);
+    doc.text(label, M, y);
+    return y + 6;
+  };
+  const table = (head, body, y, widths) => {
+    doc.autoTable({
+      head: [head], body: body.length ? body : [head.map((_, i) => i === 0 ? "None" : "")], startY: y,
+      margin: { left: M, right: M, top: 40, bottom: 34 }, theme: "grid",
+      styles: { font: "helvetica", fontSize: 8, cellPadding: 3, textColor: ink, lineColor: [221, 226, 228], lineWidth: 0.5, overflow: "linebreak" },
+      headStyles: { fillColor: accent, textColor: 255, fontStyle: "bold" },
+      columnStyles: widths || {}, didDrawPage: chrome,
+    });
+    return doc.lastAutoTable.finalY + 18;
+  };
+
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...ink);
+  doc.text(doc.splitTextToSize(title, W - 2 * M), M, 52);
+  let y = 52 + 18 * doc.splitTextToSize(title, W - 2 * M).length;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...muted);
+  for (const line of [
+    `Status: ${meta.status}`,
+    `Client / household: ${t(d.household) || "-"}   |   Document: ${t(d.source.docType) || "-"}${d.source.docDate ? ", dated " + d.source.docDate : ""}   |   Source file: ${t(d.source.fileName) || "-"}`,
+    `SharePoint: ${t(d.source.sharepointUrl) || "not linked"}`,
+  ]) { doc.text(doc.splitTextToSize(line, W - 2 * M), M, y); y += 13; }
+  chrome();
+
+  y = section("Registration & titling", y + 8);
+  const g = d.registration;
+  y = table(["Field", "Value"], [
+    ["Account title", t(g.accountTitle) + (d.titleComposed ? "  (composed from the document; confirm against custodian titling rules)" : "  (copied from the document)")],
+    ["Registration type", t(g.registrationType)], ["Tax ID type", t(g.taxIdType)], ["Tax ID", t(g.taxId)],
+    ["Trust / entity name", t(g.trustName)], ["Trust date", t(g.trustDate)], ["Governing state", t(g.governingState)],
+    ["Source account #", t(g.accountNumber)], ["Signing authority", t(g.signingAuthority)],
+  ], y, { 0: { cellWidth: 130, fontStyle: "bold" } });
+
+  y = section("Parties", y);
+  y = table(["Name", "Role(s)", "Date of birth", "SSN / TIN", "Address", "Notes", "Found on"],
+    d.parties.map(p => [t(p.name), t(p.role), t(p.dob), t(p.taxId), t(p.address), t(p.notes), t(p.ref)]), y,
+    { 0: { cellWidth: 110 }, 1: { cellWidth: 90 }, 2: { cellWidth: 62 }, 3: { cellWidth: 70 }, 4: { cellWidth: 90 }, 6: { cellWidth: 80 } });
+
+  y = section("Beneficiaries", y);
+  y = table(["Level", "Name", "Relationship", "Share %", "Per stirpes", "Date of birth", "SSN / TIN", "Notes", "Found on"],
+    d.beneficiaries.map(b => [t(b.level), t(b.name), t(b.relationship), t(b.percentage), b.perStirpes ? "Yes" : "No", t(b.dob), t(b.taxId), t(b.notes), t(b.ref)]), y,
+    { 0: { cellWidth: 56 }, 1: { cellWidth: 100 }, 3: { cellWidth: 42 }, 4: { cellWidth: 46 }, 5: { cellWidth: 60 }, 6: { cellWidth: 66 }, 8: { cellWidth: 74 } });
+  const sum = (lvl) => d.beneficiaries.filter(b => b.level === lvl).reduce((a, b) => a + (parseFloat(b.percentage) || 0), 0);
+  if (d.beneficiaries.length) {
+    doc.setFontSize(8); doc.setTextColor(...muted);
+    doc.text(`Primary total: ${Math.round(sum("Primary") * 100) / 100}%   |   Contingent total: ${Math.round(sum("Contingent") * 100) / 100}% (conditional tiers can add past 100%)`, M, y - 8);
+    y += 6;
+  }
+
+  y = section("Check before opening (flags)", y);
+  y = table(["Flag", "How it was resolved"], d.flags.map(f => [f, flagNote(d, f) || "UNRESOLVED"]), y, { 0: { cellWidth: (W - 2 * M) * 0.55 } });
+  if (d.fyi?.length) { y = section("Good to know", y); y = table(["Item"], d.fyi.map(f => [f]), y); }
+  if (str(d.notes)) { y = section("Team notes", y); y = table(["Notes"], [[d.notes]], y); }
+  if (d.check?.changes?.length) { y = section("Corrections made by the double-check", y); y = table(["Correction"], d.check.changes.map(c => [c]), y); }
+  if (str(d.source.readNote)) { y = section("How the document was read", y); table(["Note"], [[d.source.readNote]], y); }
+  return doc;
+}
+
+async function exportPdf(btn) {
+  if (!downloads || !current) return;
+  if (typeof window.jspdf === "undefined" || !window.jspdf.jsPDF?.API?.autoTable) { toast("The PDF tools didn't load. Reload the page and try again."); return; }
+  btn.disabled = true;
+  try {
+    const d = current.data;
+    const me = myId && user ? (await user.profiles([myId]))[myId]?.name : "";
+    const names = user && current.data.review?.by ? await user.profiles([current.data.review.by]) : {};
+    const status = !current.id ? "Not saved to the team log"
+      : isReviewed(d) ? `Reviewed by ${names[d.review.by]?.name || "a teammate"} on ${fmtDate(d.review.at)}` : "Draft (not reviewed)";
+    const pdf = buildRecordPdf(d, { status: status + (dirty ? " (includes unsaved edits)" : ""), exportedAt: fmtDate(new Date().toISOString()), exportedBy: me || "a teammate" });
+    const base = (d.household || d.registration.accountTitle || "record").replace(/[^\w .&'-]+/g, "").trim().slice(0, 70) || "record";
+    await downloads.save({ filename: `${base} - registration - ${new Date().toISOString().slice(0, 10)}.pdf`, data: pdf.output("blob") });
+    const logged = current.id ? await addHistory(current.id, { action: "exported" }) : true;
+    toast(logged ? "PDF saved" : "PDF saved, but the export couldn't be logged in the change history");
+  } catch (e) {
+    const c = e?.code;
+    toast(c === "declined" ? "Export cancelled" : c === "rate_limited" ? "A save prompt is already open." :
+      ["unavailable", "not_granted", "capability_disabled", "capability_removed", "extension_not_enabled"].includes(c) ? "Saving files isn't available in this view." : "The PDF couldn't be created. Try again.");
+  } finally { btn.disabled = false; }
 }
 
 function closeEditor(force) {
@@ -1779,8 +1891,8 @@ window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault()
 async function boot() {
   const c = window.claude;
   if (!c?.use) { renderLog(); $("noClaude").hidden = false; $("drop").hidden = true; return; }
-  const [dbNs, sampleNs, userNs] = await Promise.all([c.use("db"), c.use("sample"), c.use("user")]);
-  db = dbNs; sample = sampleNs; user = userNs;
+  const [dbNs, sampleNs, userNs, dlNs] = await Promise.all([c.use("db"), c.use("sample"), c.use("user"), c.use("downloads")]);
+  db = dbNs; sample = sampleNs; user = userNs; downloads = dlNs;
   if (user) myId = await user.id();
   try { canDelete = !!user && ((await user.isOwner()) || (await user.canEdit())); } catch { canDelete = false; }
   try { canWrite = user ? await user.can("data.write") : null; } catch { canWrite = null; }
