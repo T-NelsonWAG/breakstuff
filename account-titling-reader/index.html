@@ -1,4 +1,6 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+
+
 <title>Account Titling Reader</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -148,6 +150,9 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
 .chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; vertical-align: 2px; border: 1px solid currentColor; }
 .chip.draft { color: var(--warn); background: var(--warn-bg); }
 .chip.ok { color: var(--ok); }
+/* Next to anything a Viewer can't use: saving needs Contributor access. */
+.chip.need { color: var(--warn); background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; cursor: help; }
+.view-note { padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 0 3px 3px 0; font-size: 14px; max-width: none; }
 .log-when { font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .log-empty { padding: 20px 4px; color: var(--muted); font-size: 14px; border-bottom: 1px solid var(--rule); }
 @media (max-width: 520px) { .log-row { grid-template-columns: 1fr; } .log-when { text-align: left; } }
@@ -159,6 +164,7 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
   <header class="top">
     <h1>Account Titling Reader</h1>
     <p class="muted">Upload a statement or a trust, estate or entity document. Claude pulls the registration, parties and beneficiaries so you can check them and save them to the team log for account opening.</p>
+    <p class="view-note" id="viewNote" hidden>You have view access. You can read documents with Claude, browse the team log and export, but saving and reviewing need Contributor access. Ask the page owner to change your access in the Share menu.</p>
   </header>
 
   <section id="readerSec" aria-labelledby="readerH">
@@ -487,7 +493,7 @@ let db = null, sample = null, user = null, myId = null, imageLimits = null;
 let canDelete = false;       // page owner or Editor only (set in boot)
 let downloads = null;        // viewer's save prompt, for the PDF export (null: not available here)
 let promptLimit = 262144;    // largest request to Claude, in bytes (from sample.limits())
-let canWrite = null;         // false: a Viewer, who can't see the team log under the access rules
+let canWrite = null;         // false: a Viewer, who can read the team log but not change it
 let current = null;          // { id: string|null, data, createdAt?, createdBy? }
 let dirty = false;
 let records = [];            // log snapshot
@@ -503,6 +509,14 @@ function toast(msg) {
 
 // ---------- editor ----------
 function markDirty() { dirty = true; }
+
+// Viewers can read everything but never write shared data; controls that write say so.
+const NEED_TIP = "Viewers can't save changes. Ask the page owner for Contributor access in the Share menu.";
+const needChip = () => el("span", { class: "chip need", text: "Contributor access needed", title: NEED_TIP });
+function becomeReadOnly() {
+  canWrite = false; $("viewNote").hidden = false;
+  renderEditor(); renderLog();
+}
 
 // SSN / TIN masking, display only: tax ID fields, and any SSN- or EIN-shaped number in
 // other fields or free text, show only the last 4 digits. "Show" reveals one field at a
@@ -603,7 +617,7 @@ function renderEditor() {
       field("Registration type", g, "registrationType", { list: "dlReg", id: "f-regtype" }),
       field("Tax ID type", g, "taxIdType", { id: "f-tidtype", placeholder: "SSN or EIN" }),
       field("Tax ID", g, "taxId", { mono: true, id: "f-tid", sensitive: true }),
-      field("Source account #", g, "accountNumber", { mono: true, id: "f-acct" }),
+      field("Source account #", g, "accountNumber", { mono: true, id: "f-acct", sensitive: true }),
       field("Trust / entity name", g, "trustName", { id: "f-trust", span: false }),
       field("Trust date", g, "trustDate", { mono: true, id: "f-trustdate", placeholder: "YYYY-MM-DD" }),
       field("Governing state", g, "governingState", { id: "f-state" }),
@@ -746,7 +760,9 @@ function renderEditor() {
   const saveBtn = el("button", { class: "btn primary", type: "button", id: "saveBtn", text: isNew ? "Save to team log" : "Save changes" });
   saveBtn.addEventListener("click", () => save(saveBtn));
   const closeBtn = el("button", { class: "btn", type: "button", text: isNew ? "Discard" : "Close", onclick: closeEditor });
-  const acts = el("div", { class: "actions" }, saveBtn, closeBtn);
+  const ro = canWrite === false;
+  if (ro) { saveBtn.disabled = true; saveBtn.title = NEED_TIP; }
+  const acts = el("div", { class: "actions" }, saveBtn, ro ? needChip() : null, closeBtn);
   if (!isNew && sample && d.source.textSaved) {
     const rr = el("button", { class: "btn", type: "button", id: "rereadBtn", text: "Re-read",
       title: "Read the saved document text again with Claude. Team notes and the SharePoint link are kept." });
@@ -757,7 +773,8 @@ function renderEditor() {
     const rv = el("button", { class: "btn", type: "button", id: "reviewBtn", text: "Mark reviewed",
       title: "Confirm every field has been checked against the document. Must be someone other than the person who saved or last edited it." });
     rv.addEventListener("click", () => markReviewed(rv));
-    acts.append(rv);
+    if (ro) { rv.disabled = true; rv.title = NEED_TIP; acts.append(rv, needChip()); }
+    else acts.append(rv);
   }
   if (downloads) {
     const ex = el("button", { class: "btn", type: "button", id: "exportBtn", text: "Export PDF",
@@ -974,7 +991,7 @@ async function markReviewed(btn) {
     d.review = review;
     toast(logged ? "Marked reviewed" : "Marked reviewed, but the change history couldn't be updated");
     renderEditor(); renderLog();
-  } catch (e) { btn.disabled = false; toast(dbMsg(e)); }
+  } catch (e) { btn.disabled = false; toast(dbMsg(e)); if (e?.code === "invalid_argument") becomeReadOnly(); }
 }
 
 // ---------- PDF export ----------
@@ -1071,7 +1088,8 @@ async function exportPdf(btn) {
     const pdf = buildRecordPdf(d, { status: status + (dirty ? " (includes unsaved edits)" : ""), exportedAt: fmtDate(new Date().toISOString()), exportedBy: me || "a teammate" });
     const base = (d.household || d.registration.accountTitle || "record").replace(/[^\w .&'-]+/g, "").trim().slice(0, 70) || "record";
     await downloads.save({ filename: `${base} - registration - ${new Date().toISOString().slice(0, 10)}.pdf`, data: pdf.output("blob") });
-    const logged = current.id ? await addHistory(current.id, { action: "exported" }) : true;
+    // Viewers can't write the change history, so their exports aren't recorded there.
+    const logged = current.id && canWrite !== false ? await addHistory(current.id, { action: "exported" }) : true;
     toast(logged ? "PDF saved" : "PDF saved, but the export couldn't be logged in the change history");
   } catch (e) {
     const c = e?.code;
@@ -1152,7 +1170,7 @@ async function reread(btn) {
 }
 
 async function save(btn) {
-  if (!db) return;
+  if (!db || canWrite === false) return;
   const d = current.data;
   if (!str(d.registration.accountTitle) && !str(d.household)) { toast("Add an account title or a client name before saving."); $("f-title")?.focus(); return; }
   btn.disabled = true;
@@ -1197,7 +1215,8 @@ async function save(btn) {
     renderEditor(); renderLog();
   } catch (e) {
     toast(dbMsg(e));
-  } finally { btn.disabled = false; }
+    if (e?.code === "invalid_argument") becomeReadOnly();
+  } finally { btn.disabled = canWrite === false; }
 }
 
 function dbMsg(e) {
@@ -1270,7 +1289,6 @@ async function renderLog() {
     : fv === "flags" ? r.data.flags.some(f => !flagNote(r.data, f)) : true;
   const list = records.filter(r => keep(r) && (!q || haystack(r).includes(q)));
   $("logCount").textContent = records.length ? `· ${records.length} record${records.length === 1 ? "" : "s"}` : "";
-  if (canWrite === false) { log.replaceChildren(el("div", { class: "log-empty", text: "The team log holds client records and is open only to the account-processing team. Ask the page owner for Contributor access if you need it." })); return; }
   if (!db) { log.replaceChildren(el("div", { class: "log-empty", text: "The team log isn't available in this view. Open the page signed in to claude.ai to see and save records." })); return; }
   if (!records.length) { log.replaceChildren(el("div", { class: "log-empty", text: "No records yet. Read a document above and choose Save to team log. Saved records appear here for everyone on the team." })); return; }
   if (!list.length) {
@@ -2001,14 +2019,8 @@ async function boot() {
     $("noClaude").hidden = false; $("drop").hidden = true;
   }
   if (!db) { renderLog(); if (current) renderEditor(); return; }
-  if (canWrite === false) {
-    // Client records are readable only at Contributor level and above (see the db rules
-    // published with the page), so a Viewer would otherwise see an empty log.
-    db = null;
-    renderLog();
-    if (current) renderEditor();
-    return;
-  }
+  // Viewers read the log (tax IDs and account numbers stay masked until clicked) but can't change it.
+  if (canWrite === false) $("viewNote").hidden = false;
   if (current) renderEditor();
   db.collection("extractions").orderBy("createdAt", "desc").limit(1000).onSnapshot((snap) => {
     records = snap.docs.map(doc => {

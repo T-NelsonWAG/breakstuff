@@ -1,0 +1,924 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Rep ID Search</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column, same family as the Account Titling Reader. Search on top, answer card under it, then the full list, upkeep tools and history. */
+:root {
+  --bg: #f7f8f8;
+  --surface: #ffffff;
+  --fg: #1b2124;
+  --muted: #5d6870;
+  --rule: #dde2e4;
+  --accent: #1f5f7a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4eff4;
+  --warn: #8a5300;
+  --warn-bg: #fbf1df;
+  --danger: #a8322d;
+  --ok: #2c6b47;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121618; --surface: #1a1f22; --fg: #e3e8ea; --muted: #95a1a8; --rule: #2c3438;
+    --accent: #7fb6cf; --accent-ink: #0e1a20; --accent-soft: #1d2c33; --warn: #e3ad5a; --warn-bg: #2b2416; --danger: #ec8a80; --ok: #7cc49a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121618; --surface: #1a1f22; --fg: #e3e8ea; --muted: #95a1a8; --rule: #2c3438;
+  --accent: #7fb6cf; --accent-ink: #0e1a20; --accent-soft: #1d2c33; --warn: #e3ad5a; --warn-bg: #2b2416; --danger: #ec8a80; --ok: #7cc49a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+.wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 48px; }
+h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
+h1 { font-size: 26px; letter-spacing: -0.01em; }
+h2 { font-size: 18px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+p { margin: 0; max-width: 65ch; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--font-data); }
+a { color: var(--accent); }
+
+header.top { display: grid; gap: 10px; border-bottom: 1px solid var(--rule); padding-bottom: 20px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.facts b { color: var(--fg); font-weight: 500; font-family: var(--font-data); }
+
+section { display: grid; gap: 18px; min-width: 0; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+
+button { font: inherit; cursor: pointer; }
+.btn { border: 1px solid var(--rule); background: var(--surface); color: var(--fg); padding: 7px 14px; border-radius: 4px; font-size: 14px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: .5; cursor: default; }
+.linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font-size: 14px; text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+input[type=text], input[type=search], select, textarea {
+  font: 14px/1.4 var(--font-body); color: var(--fg); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; width: 100%; min-width: 0;
+}
+textarea { font: 13px/1.5 var(--font-data); resize: vertical; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* Search */
+.searchbox { display: grid; gap: 8px; }
+.searchbox label { font-size: 13px; color: var(--muted); }
+#q {
+  font: 500 22px/1.2 var(--font-data); letter-spacing: 0.04em; padding: 14px 16px;
+  border: 1.5px solid var(--rule); border-radius: 6px; background: var(--surface);
+}
+#q::placeholder { letter-spacing: 0; font-family: var(--font-body); font-weight: 400; font-size: 17px; color: var(--muted); }
+.tries { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--muted); align-items: baseline; }
+.tries button { border: 1px solid var(--rule); background: var(--surface); color: var(--fg); border-radius: 3px; padding: 1px 8px; font: 12px var(--font-data); }
+.tries button:hover { border-color: var(--accent); }
+
+.results { display: grid; gap: 20px; min-width: 0; }
+.notice { padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 0 3px 3px 0; font-size: 14px; display: grid; gap: 6px; }
+.notice.info { border-left-color: var(--accent); background: var(--accent-soft); }
+.suggest { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Answer card */
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 20px; display: grid; gap: 14px; }
+.card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.bigid { font: 600 34px/1 var(--font-data); letter-spacing: 0.06em; }
+.advisors { font-size: 20px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 20px; margin: 0; }
+.kv div { display: grid; gap: 2px; min-width: 0; }
+.kv dt { font-size: 12px; color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--font-data); font-size: 15px; overflow-wrap: anywhere; }
+.kv dd.text { font-family: var(--font-body); }
+.card-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border-top: 1px solid var(--rule); padding-top: 14px; }
+.answer-line { font-family: var(--font-data); font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.chip.joint { color: var(--accent); }
+.chip.secondary { color: var(--warn); }
+.chip.retired { color: var(--danger); }
+.chip.note { color: var(--warn); background: var(--warn-bg); }
+/* Marks a control that needs Contributor access. */
+.chip.locked { color: var(--warn); background: var(--warn-bg); text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; cursor: help; }
+
+/* ID lists */
+.idlist { display: grid; border-top: 1px solid var(--rule); }
+.idrow {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline;
+  padding: 9px 4px; border: 0; border-bottom: 1px solid var(--rule); background: none; color: inherit; text-align: left; width: 100%; font-size: 14px;
+}
+.idrow:hover { background: var(--surface); }
+.idrow .rid { font: 600 14px var(--font-data); letter-spacing: 0.04em; }
+.idrow .who { overflow-wrap: anywhere; }
+.idrow .where { font: 13px var(--font-data); color: var(--muted); white-space: nowrap; display: flex; gap: 8px; align-items: baseline; }
+.person { display: grid; gap: 8px; }
+.person-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.person-head h2 { font-size: 17px; }
+
+/* Directory table */
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.filters select { width: auto; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; background: var(--surface); color: var(--fg); padding: 5px 11px; font-size: 13px; border-right: 1px solid var(--rule); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.tablewrap { overflow-x: auto; border-top: 1px solid var(--fg); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 10px 8px 4px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+td { padding: 8px 10px 8px 4px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td.m { font-family: var(--font-data); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface); }
+tr.is-retired td { color: var(--muted); text-decoration: line-through; }
+tr.is-retired td:last-child { text-decoration: none; }
+
+/* Upkeep */
+.tools { display: grid; gap: 28px; }
+.tool { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.tool > p { font-size: 14px; color: var(--muted); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 16px; }
+.span-all { grid-column: 1 / -1; }
+label.f { display: grid; gap: 3px; min-width: 0; }
+label.f > span { font-size: 12px; color: var(--muted); }
+.check { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.err { color: var(--danger); font-size: 14px; }
+.diff { display: grid; gap: 14px; }
+.diff h3 { color: var(--fg); }
+.diff ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--rule); }
+.diff li { display: grid; grid-template-columns: auto 64px minmax(0, 1fr); gap: 4px 12px; padding: 8px 4px; border-bottom: 1px solid var(--rule); align-items: baseline; font-size: 14px; }
+.diff li .rid { font: 600 14px var(--font-data); }
+.diff .was { color: var(--muted); text-decoration: line-through; display: block; }
+.diff select { width: auto; font-size: 13px; padding: 2px 6px; margin-left: 6px; }
+
+/* Collapsed extras under the search */
+.folds { display: grid; border-top: 1px solid var(--rule); min-width: 0; }
+details.fold { border-bottom: 1px solid var(--rule); min-width: 0; }
+details.fold > summary { list-style: none; cursor: pointer; padding: 14px 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::after { content: "+"; font: 500 18px/1 var(--font-data); color: var(--muted); }
+details.fold[open] > summary::after { content: "\2212"; }
+details.fold > summary:hover h2 { color: var(--accent); }
+details.fold > summary h2 { font-size: 16px; font-weight: 500; }
+.fold-body { display: grid; gap: 18px; padding: 4px 4px 28px; min-width: 0; }
+.ask-body { display: grid; gap: 10px; }
+.ask-out { white-space: pre-wrap; font-size: 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 12px; }
+
+/* History */
+.hist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.hist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; padding: 9px 4px; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.hist .when { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hist .by { font-size: 13px; color: var(--muted); }
+.empty { padding: 16px 4px; color: var(--muted); font-size: 14px; border-bottom: 1px solid var(--rule); }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 4px; font-size: 14px; max-width: calc(100% - 32px); z-index: 20; }
+@media (max-width: 560px) {
+  .idrow { grid-template-columns: 56px minmax(0, 1fr); }
+  .idrow .where { grid-column: 2; }
+  .bigid { font-size: 28px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Rep ID Search</h1>
+    <p class="muted">Look up a Winthrop LPL / IFA Rep ID to see its advisors, primary point of contact and branch, or type an advisor's name to see every ID they're on. Answers come straight from the team's list, so a typo never returns a near match.</p>
+    <div class="facts" id="facts"><span>Connecting to the team list…</span></div>
+    <p class="notice info" id="viewNote" hidden>You have view access. You can search, browse, ask Claude and export, but changing the list needs Contributor access — ask the page owner to change your access in the Share menu.</p>
+  </header>
+
+  <section aria-labelledby="searchH">
+    <h2 id="searchH" hidden>Search</h2>
+    <!-- Only the search is open by default; everything else lives in the collapsed sections below. -->
+    <div class="searchbox">
+      <label for="q">Rep ID, advisor name, or branch</label>
+      <input type="search" id="q" autocomplete="off" spellcheck="false" placeholder="e.g. L2MH, Boehm, or 50M6">
+    </div>
+    <div class="results" id="results" aria-live="polite"></div>
+  </section>
+
+  <div class="folds">
+  <details class="fold" id="askBox" hidden>
+    <summary><h2>Ask a question in plain English</h2></summary>
+    <div class="fold-body ask-body">
+      <textarea id="askIn" rows="2" placeholder="e.g. Which joint IDs is Jonathan Hunter the primary POC on?"></textarea>
+      <div class="row-actions"><button class="btn primary" type="button" id="askGo">Ask Claude</button><span class="small muted">Claude answers only from the list on this page.</span></div>
+      <div class="ask-out" id="askOut" hidden></div>
+    </div>
+  </details>
+
+  <details class="fold" id="dirFold">
+    <summary><h2 id="dirH">Browse by office <span class="muted small" id="dirCount"></span></h2></summary>
+    <div class="fold-body">
+    <div class="sec-head">
+      <label class="check small" id="retiredWrap" hidden><input type="checkbox" id="showRetired"> Show retired</label>
+    </div>
+    <div class="filters">
+      <div class="seg" id="groupSeg" role="group" aria-label="Choose an office"></div>
+    </div>
+    <div class="tablewrap" id="dirTable" hidden>
+      <table>
+        <thead><tr><th>Rep ID</th><th>Advisor(s)</th><th>Primary POC</th><th>Branch</th><th>Mgr</th><th>Type</th></tr></thead>
+        <tbody id="dirBody"><tr><td colspan="6" class="muted">Loading the Rep ID list…</td></tr></tbody>
+      </table>
+    </div>
+    </div>
+  </details>
+
+  <details class="fold" id="upkeep" hidden>
+    <summary><h2 id="upH">Keep the list current</h2></summary>
+    <div class="fold-body">
+    <div class="tools">
+      <div class="tool" id="editTool">
+        <div class="sec-head"><h3 id="editH">Add a Rep ID</h3><span style="display:flex;gap:8px;align-items:baseline"><span class="chip locked needs-contrib" hidden title="Viewers can't change the list. Ask the page owner for Contributor access in the Share menu.">Contributor access needed</span><button class="linkbtn" type="button" id="newBtn">Add a new Rep ID</button></span></div>
+        <div class="grid">
+          <label class="f"><span>Rep ID</span><input type="text" id="eId" class="mono" maxlength="4" autocomplete="off" spellcheck="false"></label>
+          <label class="f"><span>Group</span><select id="eGroup"></select></label>
+          <label class="f"><span>Branch</span><input type="text" id="eBranch" class="mono" maxlength="4" autocomplete="off" placeholder="50Y8 if none"></label>
+          <label class="f span-all"><span>Advisor(s), "Last, First", separated by /</span><input type="text" id="eAdv" autocomplete="off" placeholder="Winthrop, Mark / Jaworski, Peter"></label>
+          <label class="f"><span>Primary POC</span><input type="text" id="ePoc" autocomplete="off" placeholder="Blank if not specified"></label>
+          <label class="f"><span>Status note</span><input type="text" id="eNote" autocomplete="off" placeholder="e.g. Excluded from BoB report"></label>
+          <label class="check"><input type="checkbox" id="eSecondary"> Secondary ID</label>
+        </div>
+        <p class="err" id="editErr" hidden></p>
+        <div class="row-actions">
+          <button class="btn primary" type="button" id="saveBtn">Save Rep ID</button>
+          <button class="btn" type="button" id="cancelBtn">Clear</button>
+          <span style="flex:1"></span>
+          <button class="btn danger" type="button" id="retireBtn" hidden>Retire this ID</button>
+          <span class="chip locked needs-contrib" hidden title="Viewers can't change the list. Ask the page owner for Contributor access in the Share menu.">Contributor access needed</span>
+        </div>
+      </div>
+
+      <div class="tool">
+        <h3>Check a new IFA Rep ID list</h3>
+        <p>Upload the new "IFA REP IDs ACTIVE" PDF or paste its text. You'll see what's new, what changed and what's missing before anything is saved.</p>
+        <div class="row-actions">
+          <label class="btn" for="ifaFile">Choose PDF</label>
+          <input type="file" id="ifaFile" accept=".pdf,.txt" hidden>
+          <button class="linkbtn" type="button" id="pasteToggle">Paste text instead</button>
+        </div>
+        <div id="pasteWrap" hidden style="display:grid;gap:8px">
+          <textarea id="ifaPaste" rows="6" placeholder="Q4BT    Abendroth, Robert&#10;S45Q    Abendroth, Robert / Cohen, Scott&#10;…"></textarea>
+          <div><button class="btn primary" type="button" id="pasteGo">Compare pasted list</button></div>
+        </div>
+        <p class="err" id="ifaErr" hidden></p>
+        <div class="diff" id="diff" hidden></div>
+      </div>
+
+      <div class="tool">
+        <h3>List date and nicknames</h3>
+        <div class="grid">
+          <label class="f"><span>List is as of (M/YYYY)</span><input type="text" id="asOf" class="mono" autocomplete="off"></label>
+          <label class="f span-all"><span>Other names: one person per line, the name on the list first, then "=" and other names separated by ";"</span>
+            <textarea id="aliases" rows="6" spellcheck="false"></textarea></label>
+        </div>
+        <div class="row-actions"><button class="btn" type="button" id="metaSave">Save date and nicknames</button><span class="chip locked needs-contrib" hidden title="Viewers can't change the list. Ask the page owner for Contributor access in the Share menu.">Contributor access needed</span></div>
+      </div>
+
+      <div class="tool" id="exportTool" hidden>
+        <h3>Export</h3>
+        <p>Download the active list as a CSV, one row per Rep ID, with a plain-sentence column so search tools and Claude projects find rows reliably.</p>
+        <div class="row-actions"><button class="btn" type="button" id="exportBtn">Download CSV</button></div>
+      </div>
+    </div>
+    </div>
+  </details>
+
+  <details class="fold" id="histFold">
+    <summary><h2 id="histH">Recent changes</h2></summary>
+    <div class="fold-body">
+      <ul class="hist" id="hist"><li class="empty">No changes recorded yet.</li></ul>
+    </div>
+  </details>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(() => {
+"use strict";
+
+const OSJ = "50Y8";
+const GROUPS = {
+  WW:   { label: "Winthrop Wealth", short: "WW", mgr: "36HK", entity: "Winthrop Advisory Group, LLC" },
+  FPS:  { label: "Financial Planning Strategies", short: "FPS", mgr: "36HK", entity: "Winthrop Advisory Group, LLC" },
+  UWM:  { label: "Unified Wealth Management", short: "UWM", mgr: "K43N", entity: "Unified Wealth Management" },
+  KEEL: { label: "Keel Financial Partners", short: "Keel", mgr: "826X", entity: "Keel Financial Partners" }
+};
+const GROUP_ORDER = ["WW", "FPS", "UWM", "KEEL"];
+// Characters people mix up when reading or typing Rep IDs.
+const CONFUSABLE = { O: "0", "0": "O", I: "1", "1": "I", L: "1", S: "5", "5": "S", B: "8", "8": "B", Z: "2", "2": "Z", G: "6", "6": "G" };
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
+  return n;
+};
+const str = (v) => (v == null ? "" : String(v).trim());
+const fold = (s) => str(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const normId = (s) => str(s).toUpperCase().replace(/[\s\-_.]/g, "");
+const isIdShape = (s) => /^[0-9A-Z]{4}$/.test(s);
+
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200); }
+
+// ---------- state ----------
+let db = null, user = null, sample = null, downloads = null, myId = null;
+let canWrite = null;
+const reps = new Map();          // REPID -> row
+let meta = { asOf: "", aliases: [] };
+let metaLoaded = false, repsLoaded = false;
+let groupFilter = null;          // office whose IDs are listed; null hides the list
+let editing = null;              // REPID being edited, or null for a new one
+
+// ---------- derived ----------
+const typeOf = (r) => r.secondary ? "Secondary ID" : (r.advisors || []).length > 1 ? "Joint" : "Individual";
+const advText = (r) => (r.advisors || []).join(" / ") + (r.secondary ? " (secondary ID)" : "");
+const groupOf = (r) => GROUPS[r.group] || GROUPS.WW;
+const active = () => [...reps.values()].filter(r => r.status !== "retired");
+const answerLine = (r) => `${r.repId} -> ${advText(r)}, Branch ${r.branch || "not on file"}`;
+
+// Alias index: folded name -> canonical name (the name as it appears on the list).
+function aliasIndex() {
+  const idx = new Map();
+  for (const a of meta.aliases || []) {
+    const names = [a.name, ...(a.aka || [])].map(str).filter(Boolean);
+    for (const n of names) idx.set(fold(n), a.name);
+  }
+  return idx;
+}
+// People: canonical name -> { name, variants:Set, ids:Set }
+function people() {
+  const idx = aliasIndex(), out = new Map();
+  const add = (raw, id) => {
+    const canon = idx.get(fold(raw)) || raw;
+    if (!out.has(canon)) out.set(canon, { name: canon, variants: new Set([canon]), ids: new Set() });
+    const p = out.get(canon); p.variants.add(raw); if (id) p.ids.add(id);
+  };
+  for (const r of reps.values()) for (const a of r.advisors || []) add(a, r.repId);
+  for (const a of meta.aliases || []) {
+    const canon = a.name; if (!out.has(canon)) continue;
+    for (const v of a.aka || []) out.get(canon).variants.add(v);
+  }
+  return out;
+}
+
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) { const t = row[j]; row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; }
+  }
+  return row[b.length];
+}
+// IDs on the list one character away from `id`; confusable swaps first.
+function lookalikes(id, pool) {
+  const swaps = new Set();
+  for (let i = 0; i < id.length; i++) { const c = CONFUSABLE[id[i]]; if (c) swaps.add(id.slice(0, i) + c + id.slice(i + 1)); }
+  const out = [];
+  for (const r of pool) {
+    if (r.repId === id) continue;
+    if (swaps.has(r.repId)) out.push({ r, swap: true });
+    else if (r.repId.length === id.length && editDistance(r.repId, id) === 1) out.push({ r, swap: false });
+  }
+  return out.sort((a, b) => (b.swap - a.swap) || a.r.repId.localeCompare(b.r.repId));
+}
+
+function searchPeople(q) {
+  const toks = fold(q).split(" ").filter(Boolean);
+  if (!toks.length) return [];
+  const hits = [];
+  for (const p of people().values()) {
+    const words = fold([...p.variants].join(" ")).split(" ");
+    if (toks.every(t => words.some(w => w.startsWith(t)))) hits.push(p);
+  }
+  return hits.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function monthsOld(asOf) {
+  const m = str(asOf).match(/^(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const now = new Date();
+  return (now.getFullYear() - +m[2]) * 12 + (now.getMonth() + 1 - +m[1]);
+}
+
+// ---------- header ----------
+function renderFacts() {
+  const f = $("facts"); f.replaceChildren();
+  if (!db) { f.append(el("span", { text: "The team list needs a signed-in claude.ai view. Open this page from claude.ai to search it." })); return; }
+  if (!repsLoaded) { f.append(el("span", { text: "Connecting to the team list…" })); return; }
+  const n = active().length;
+  f.append(
+    el("span", {}, el("b", { text: String(n) }), " active Rep IDs"),
+    el("span", {}, "OSJ ", el("b", { text: OSJ })),
+    el("span", {}, "List as of ", el("b", { text: meta.asOf || "not set" }))
+  );
+  const age = monthsOld(meta.asOf);
+  if (age != null && age >= 4) f.append(el("span", { style: "color:var(--warn)", text: `${age} months old. Check for a newer IFA list.` }));
+}
+
+// ---------- search ----------
+function idRow(r) {
+  return el("button", { class: "idrow", type: "button", onclick: () => setQuery(r.repId) },
+    el("span", { class: "rid", text: r.repId }),
+    el("span", { class: "who", text: advText(r) }),
+    el("span", { class: "where" }, "Br " + (r.branch || "—"),
+      typeOf(r) !== "Individual" ? el("span", { class: "chip " + (r.secondary ? "secondary" : "joint"), text: r.secondary ? "2nd" : "Joint" }) : null,
+      r.status === "retired" ? el("span", { class: "chip retired", text: "Retired" }) : null));
+}
+
+function card(r) {
+  const g = groupOf(r);
+  const copyBtn = el("button", { class: "btn primary", type: "button", text: "Copy answer" });
+  copyBtn.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(answerLine(r)); toast("Copied"); }
+    catch { const s = window.getSelection(), rg = document.createRange(); rg.selectNodeContents(line); s.removeAllRanges(); s.addRange(rg); toast("Selected. Press Ctrl+C to copy."); }
+  });
+  const line = el("span", { class: "answer-line", text: answerLine(r) });
+  const branchText = !r.branch ? "Not on file" : r.branch === OSJ ? `${r.branch} (OSJ, no distinct branch)` : r.branch;
+  return el("article", { class: "card", "aria-label": `Rep ID ${r.repId}` },
+    el("div", { class: "card-top" },
+      el("span", { class: "bigid", text: r.repId }),
+      el("span", { class: "chip " + (r.secondary ? "secondary" : typeOf(r) === "Joint" ? "joint" : ""), text: typeOf(r) }),
+      el("span", { class: "chip", text: g.short }),
+      r.status === "retired" ? el("span", { class: "chip retired", text: "Retired" }) : null,
+      r.note ? el("span", { class: "chip note", text: r.note }) : null),
+    r.status === "retired" ? el("div", { class: "notice", text: "This ID is retired. It's no longer on the active list." }) : null,
+    el("div", { class: "advisors", text: (r.advisors || []).join(" / ") }),
+    el("dl", { class: "kv" },
+      kv("Primary POC", r.primaryPoc || (typeOf(r) === "Individual" ? (r.advisors || [])[0] : "Not yet specified"), true),
+      kv("Branch", branchText),
+      kv("OSJ", OSJ),
+      kv("Manager ID", `${g.mgr}`),
+      kv("Entity", g.entity, true),
+      kv("Group", g.label, true)),
+    el("div", { class: "card-actions" }, copyBtn,
+      db ? el("button", { class: "btn", type: "button", text: "Edit", disabled: canWrite === false, onclick: () => startEdit(r.repId) }) : null,
+      db && canWrite === false ? lockChip() : null,
+      line));
+}
+const LOCK_TIP = "Viewers can't change the list. Ask the page owner for Contributor access in the Share menu.";
+const lockChip = () => el("span", { class: "chip locked", title: LOCK_TIP, text: "Contributor access needed" });
+const kv = (k, v, text) => el("div", {}, el("dt", { text: k }), el("dd", { class: text ? "text" : "", text: v }));
+
+function runSearch() {
+  const raw = $("q").value, out = $("results");
+  out.replaceChildren();
+  if (!str(raw)) return;
+  if (!repsLoaded) { out.append(el("p", { class: "muted", text: "The list is still loading." })); return; }
+  const id = normId(raw);
+  const pool = [...reps.values()];
+  let shown = false;
+
+  if (isIdShape(id)) {
+    const hit = reps.get(id);
+    if (hit) {
+      out.append(card(hit)); shown = true;
+      const near = lookalikes(id, active());
+      if (near.length) out.append(el("div", { class: "notice info" },
+        el("span", { text: `Make sure you meant ${id}. ${near.length === 1 ? "This ID differs" : "These IDs differ"} by one character:` }),
+        el("div", { class: "idlist" }, near.map(n => idRow(n.r)))));
+    } else if (/\d/.test(id)) {
+      const near = lookalikes(id, pool);
+      out.append(el("div", { class: "notice" },
+        el("span", { text: `${id} isn't on the list${meta.asOf ? ` as of ${meta.asOf}` : ""}. It may be a typo, or an ID added after the list date.` }),
+        near.length ? el("div", { class: "suggest" }, el("span", { text: "Did you mean" }),
+          near.slice(0, 4).map(n => el("button", { class: "btn", type: "button", onclick: () => setQuery(n.r.repId) },
+            el("span", { class: "mono", text: n.r.repId }), el("span", { class: "muted small", text: "  " + (n.r.advisors || [])[0] })))) : null));
+      shown = true;
+    }
+    const byBranch = pool.filter(r => r.branch === id && r.status !== "retired");
+    const byMgr = pool.filter(r => groupOf(r).mgr === id && r.status !== "retired");
+    if (!hit && (byBranch.length || byMgr.length)) {
+      if (shown) out.lastChild.remove();
+      const list = byBranch.length ? byBranch : byMgr;
+      out.append(el("div", { class: "person" },
+        el("div", { class: "person-head" }, el("h2", { text: `${byBranch.length ? "Branch" : "Manager ID"} ${id}` }),
+          el("span", { class: "muted small", text: `${list.length} Rep ID${list.length > 1 ? "s" : ""}${id === OSJ ? " use the OSJ as their branch" : ""}` })),
+        el("div", { class: "idlist" }, sortIds(list).map(idRow))));
+      shown = true;
+    }
+  }
+
+  const ppl = searchPeople(raw);
+  if (ppl.length && !(isIdShape(id) && reps.has(id))) {
+    if (ppl.length > 1) out.append(el("div", { class: "notice info" }, el("span", { text: `${ppl.length} people match "${str(raw)}". Each one's IDs are listed below.` })));
+    for (const p of ppl) {
+      const ids = sortIds([...p.ids].map(i => reps.get(i)).filter(r => r && r.status !== "retired"));
+      const others = [...p.variants].filter(v => v !== p.name);
+      const idx = aliasIndex();
+      const pocOn = ids.filter(r => r.primaryPoc && (idx.get(fold(r.primaryPoc)) || r.primaryPoc) === p.name).length;
+      out.append(el("div", { class: "person" },
+        el("div", { class: "person-head" }, el("h2", { text: p.name }),
+          el("span", { class: "muted small", text: `${ids.length} Rep ID${ids.length === 1 ? "" : "s"}${pocOn ? ` · primary POC on ${pocOn}` : ""}${others.length ? ` · also listed as ${others.join(", ")}` : ""}` })),
+        el("div", { class: "idlist" }, ids.map(idRow))));
+    }
+    shown = true;
+  }
+
+  if (!shown) out.append(el("div", { class: "notice" }, el("span", { text: `Nothing on the list matches "${str(raw)}". Try a 4-character Rep ID, a last name, or a branch number.` })));
+}
+function sortIds(list) {
+  return [...list].sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || (a.advisors[0] || "").localeCompare(b.advisors[0] || "") || a.repId.localeCompare(b.repId));
+}
+function setQuery(v) { $("q").value = v; runSearch(); $("q").focus(); window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
+$("q").addEventListener("input", runSearch);
+document.querySelectorAll("[data-try]").forEach(b => b.addEventListener("click", () => setQuery(b.dataset.try)));
+
+// ---------- directory ----------
+function renderGroupSeg() {
+  const seg = $("groupSeg"); seg.replaceChildren();
+  const counts = {}; for (const r of active()) counts[r.group] = (counts[r.group] || 0) + 1;
+  const mk = (key, label) => el("button", { type: "button", "aria-pressed": String(groupFilter === key), text: label, onclick: () => { groupFilter = groupFilter === key ? null : key; renderDir(); renderGroupSeg(); } });
+  seg.append(...GROUP_ORDER.map(k => mk(k, `${GROUPS[k].short} (${counts[k] || 0})`)));
+}
+function renderDir() {
+  const body = $("dirBody"); body.replaceChildren();
+  $("dirTable").hidden = !groupFilter; $("retiredWrap").hidden = !groupFilter;
+  if (!groupFilter) { $("dirCount").textContent = ""; return; }
+  if (!db) { body.append(el("tr", {}, el("td", { colspan: "6", class: "muted", text: "Open this page from claude.ai to load the team list." }))); return; }
+  if (!repsLoaded) { body.append(el("tr", {}, el("td", { colspan: "6", class: "muted", text: "Loading the Rep ID list…" }))); return; }
+  const showRet = $("showRetired").checked;
+  const list = sortIds([...reps.values()].filter(r => (showRet || r.status !== "retired") && r.group === groupFilter));
+  $("dirCount").textContent = `${list.length} shown`;
+  if (!list.length) { body.append(el("tr", {}, el("td", { colspan: "6", class: "muted", text: reps.size ? "No Rep IDs in this group." : "The list is empty. Add the first Rep ID under Keep the list current." }))); return; }
+  for (const r of list) {
+    const tr = el("tr", { class: r.status === "retired" ? "is-retired" : "", tabindex: "0" },
+      el("td", { class: "m", text: r.repId }),
+      el("td", { text: advText(r) }),
+      el("td", { text: r.primaryPoc || "" }),
+      el("td", { class: "m", text: r.branch || "—" }),
+      el("td", { class: "m", text: groupOf(r).mgr }),
+      el("td", {}, el("span", { class: "chip " + (r.secondary ? "secondary" : typeOf(r) === "Joint" ? "joint" : ""), text: typeOf(r) }),
+        r.note ? el("span", { class: "chip note", style: "margin-left:6px", text: r.note }) : null,
+        r.status === "retired" ? el("span", { class: "chip retired", style: "margin-left:6px", text: "Retired" }) : null));
+    tr.addEventListener("click", () => setQuery(r.repId));
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter") setQuery(r.repId); });
+    body.append(tr);
+  }
+}
+$("showRetired").addEventListener("change", renderDir);
+
+// ---------- history ----------
+let histDocs = [];
+async function renderHist() {
+  const ul = $("hist"); ul.replaceChildren();
+  if (!histDocs.length) { ul.append(el("li", { class: "empty", text: "No changes recorded yet." })); return; }
+  const ids = [...new Set(histDocs.map(h => h.by).filter(Boolean))];
+  const ps = user && ids.length ? await user.profiles(ids).catch(() => ({})) : {};
+  ul.replaceChildren();
+  for (const h of histDocs) {
+    const when = h.at ? new Date(h.at) : null;
+    ul.append(el("li", {},
+      el("span", {}, h.repId ? el("span", { class: "mono", text: h.repId + "  " }) : null, h.summary || h.action),
+      el("span", { class: "when", text: when ? when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "" }),
+      el("span", { class: "by", text: (h.by && ps[h.by]?.name) || "Someone" })));
+  }
+}
+async function logChange(entry) {
+  try { await db.collection("changes").add({ ...entry, by: myId || "", at: new Date().toISOString() }); }
+  catch { /* the change itself saved; history is best effort */ }
+}
+
+// ---------- editing ----------
+function fillGroupSelect(sel, value) {
+  sel.replaceChildren(...GROUP_ORDER.map(k => el("option", { value: k, text: `${GROUPS[k].label} (${GROUPS[k].mgr})` })));
+  sel.value = value || "WW";
+}
+function startEdit(id) {
+  const r = reps.get(id);
+  editing = r ? id : null;
+  $("editH").textContent = r ? `Edit ${id}` : "Add a Rep ID";
+  $("eId").value = r ? r.repId : ""; $("eId").readOnly = !!r;
+  fillGroupSelect($("eGroup"), r?.group);
+  $("eBranch").value = r?.branch || "";
+  $("eAdv").value = r ? (r.advisors || []).join(" / ") : "";
+  $("ePoc").value = r?.primaryPoc || "";
+  $("eNote").value = r?.note || "";
+  $("eSecondary").checked = !!r?.secondary;
+  $("retireBtn").hidden = !r;
+  $("retireBtn").textContent = r?.status === "retired" ? "Restore this ID" : "Retire this ID";
+  $("editErr").hidden = true;
+  if (r) { $("upkeep").hidden = false; $("upkeep").open = true; $("editTool").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); $("eAdv").focus(); }
+}
+$("newBtn").addEventListener("click", () => { startEdit(null); $("eId").focus(); });
+$("cancelBtn").addEventListener("click", () => startEdit(null));
+
+function readForm() {
+  const repId = normId($("eId").value);
+  const advisors = $("eAdv").value.split("/").map(str).filter(Boolean);
+  const branch = normId($("eBranch").value);
+  const errs = [];
+  if (!isIdShape(repId)) errs.push("Rep ID must be 4 letters or digits.");
+  if (!editing && reps.has(repId)) errs.push(reps.get(repId).status === "retired" ? `${repId} is on file as retired. Search for it and choose Edit to restore it.` : `${repId} is already on the list. Search for it and choose Edit.`);
+  if (!advisors.length) errs.push("Add at least one advisor.");
+  if (advisors.some(a => !a.includes(","))) errs.push('Write each advisor as "Last, First".');
+  if (branch && !isIdShape(branch)) errs.push("Branch must be 4 letters or digits.");
+  return { errs, row: { repId, advisors, branch, group: $("eGroup").value, primaryPoc: str($("ePoc").value), note: str($("eNote").value), secondary: $("eSecondary").checked } };
+}
+function describeChange(before, after) {
+  const parts = [];
+  if (advText(before) !== advText(after)) parts.push(`advisors ${advText(before)} → ${advText(after)}`);
+  if ((before.branch || "") !== (after.branch || "")) parts.push(`branch ${before.branch || "—"} → ${after.branch || "—"}`);
+  if ((before.primaryPoc || "") !== (after.primaryPoc || "")) parts.push(`POC ${before.primaryPoc || "—"} → ${after.primaryPoc || "—"}`);
+  if (before.group !== after.group) parts.push(`group ${groupOf(before).short} → ${groupOf(after).short}`);
+  if ((before.note || "") !== (after.note || "")) parts.push(`note "${before.note || ""}" → "${after.note || ""}"`);
+  return parts.length ? "Edited: " + parts.join("; ") : "";
+}
+async function writeRep(row) {
+  await db.doc("reps/" + row.repId).set({ ...row, status: row.status || "active", updatedAt: new Date().toISOString(), updatedBy: myId || "" });
+}
+$("saveBtn").addEventListener("click", async () => {
+  const { errs, row } = readForm();
+  if (errs.length) { $("editErr").textContent = errs.join(" "); $("editErr").hidden = false; return; }
+  const before = editing ? reps.get(editing) : null;
+  const next = { ...(before || {}), ...row, status: before?.status || "active" };
+  delete next.updatedAt; delete next.updatedBy;
+  const summary = before ? describeChange(before, next) : `Added: ${advText(next)}, branch ${next.branch || "not set"}`;
+  if (before && !summary) { toast("Nothing changed"); return; }
+  $("saveBtn").disabled = true;
+  try {
+    await writeRep(next);
+    await logChange({ repId: next.repId, action: before ? "edited" : "added", summary });
+    toast(`Saved ${next.repId}`); startEdit(null); setQuery(next.repId);
+  } catch (e) { $("editErr").textContent = writeMsg(e); $("editErr").hidden = false; }
+  finally { $("saveBtn").disabled = false; }
+});
+let retireArm;
+$("retireBtn").addEventListener("click", async () => {
+  const r = reps.get(editing); if (!r) return;
+  const btn = $("retireBtn"), restoring = r.status === "retired";
+  if (!btn.dataset.armed) { btn.dataset.armed = "1"; btn.textContent = restoring ? "Click again to restore" : "Click again to retire"; retireArm = setTimeout(() => { delete btn.dataset.armed; btn.textContent = restoring ? "Restore this ID" : "Retire this ID"; }, 4000); return; }
+  clearTimeout(retireArm); delete btn.dataset.armed; btn.disabled = true;
+  try {
+    const next = { ...r, status: restoring ? "active" : "retired" }; delete next.updatedAt; delete next.updatedBy;
+    await writeRep(next);
+    await logChange({ repId: r.repId, action: restoring ? "restored" : "retired", summary: restoring ? "Restored to the active list" : "Retired (no longer on the active list)" });
+    toast(restoring ? `Restored ${r.repId}` : `Retired ${r.repId}`); startEdit(null); setQuery(r.repId);
+  } catch (e) { $("editErr").textContent = writeMsg(e); $("editErr").hidden = false; }
+  finally { btn.disabled = false; }
+});
+function writeMsg(e) {
+  if (e?.code === "invalid_argument") { canWrite = false; applyWriteAccess(); runSearch(); return "You can view this list but not change it. Ask the page owner for Contributor access."; }
+  if (e?.code === "quota_exceeded") return "The list's storage is full. Ask the page owner to clear old history.";
+  return "The change couldn't be saved. Check your connection and try again.";
+}
+
+// ---------- list date + nicknames ----------
+function aliasesToText(list) { return (list || []).map(a => `${a.name} = ${(a.aka || []).join("; ")}`).join("\n"); }
+function textToAliases(t) {
+  return t.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+    const [name, rest = ""] = l.split("=");
+    return { name: str(name), aka: rest.split(";").map(str).filter(Boolean) };
+  }).filter(a => a.name && a.aka.length);
+}
+function fillMetaForm() {
+  if (document.activeElement !== $("asOf")) $("asOf").value = meta.asOf || "";
+  if (document.activeElement !== $("aliases")) $("aliases").value = aliasesToText(meta.aliases);
+}
+$("metaSave").addEventListener("click", async () => {
+  const asOf = str($("asOf").value);
+  if (asOf && !/^\d{1,2}\/\d{4}$/.test(asOf)) { toast("Write the date as M/YYYY, e.g. 7/2026"); return; }
+  const aliases = textToAliases($("aliases").value);
+  const changedDate = asOf !== (meta.asOf || "");
+  const changedAliases = JSON.stringify(aliases) !== JSON.stringify(meta.aliases || []);
+  if (!changedDate && !changedAliases) { toast("Nothing changed"); return; }
+  $("metaSave").disabled = true;
+  try {
+    await db.doc("meta/list").set({ ...meta, asOf, aliases, updatedAt: new Date().toISOString(), updatedBy: myId || "" });
+    if (changedDate) await logChange({ action: "asof", summary: `List date set to ${asOf}` });
+    if (changedAliases) await logChange({ action: "aliases", summary: "Nicknames updated" });
+    toast("Saved");
+  } catch (e) { toast(writeMsg(e)); }
+  finally { $("metaSave").disabled = false; }
+});
+
+// ---------- import a new IFA list ----------
+$("pasteToggle").addEventListener("click", () => { $("pasteWrap").hidden = !$("pasteWrap").hidden; if (!$("pasteWrap").hidden) $("ifaPaste").focus(); });
+$("pasteGo").addEventListener("click", () => compareList($("ifaPaste").value, "pasted text"));
+$("ifaFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  $("ifaErr").hidden = true;
+  try {
+    const text = /\.pdf$/i.test(f.name) ? await pdfText(f) : await f.text();
+    compareList(text, f.name);
+  } catch { $("ifaErr").textContent = "That file couldn't be read. Try pasting the list's text instead."; $("ifaErr").hidden = false; }
+});
+async function pdfText(file) {
+  if (!window.pdfjsLib) throw new Error("pdf.js missing");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const lines = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const tc = await (await pdf.getPage(p)).getTextContent();
+    // Rebuild lines from position: items on the same baseline, left to right.
+    const rows = new Map();
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5] / 2) * 2;
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push({ x: it.transform[4], s: it.str });
+    }
+    for (const y of [...rows.keys()].sort((a, b) => b - a)) lines.push(rows.get(y).sort((a, b) => a.x - b.x).map(i => i.s).join(" "));
+  }
+  return lines.join("\n");
+}
+function parseList(text) {
+  const rows = new Map(); let group = "WW", asOf = "";
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+/g, " ").trim();
+    if (!line) continue;
+    const d = line.match(/As of\s*(\d{1,2})[.\/-](\d{4})/i); if (d) asOf = `${+d[1]}/${d[2]}`;
+    if (/Financial Planning Strategies|\bFPS\b/i.test(line) && !/^[0-9A-Z]{4}\s/.test(line)) { group = "FPS"; continue; }
+    if (/Unified Wealth|K43N/i.test(line) && !/^[0-9A-Z]{4}\s/.test(line)) { group = "UWM"; continue; }
+    if (/Keel Financial|826X/i.test(line) && !/^[0-9A-Z]{4}\s/.test(line)) { group = "KEEL"; continue; }
+    if (/^WW\b/i.test(line)) { group = "WW"; continue; }
+    const m = line.match(/^([0-9A-Z]{4})\s+(.+)$/);
+    if (!m || !m[2].includes(",")) continue;
+    let rest = m[2]; const secondary = /\(secondary ID\)/i.test(rest);
+    rest = rest.replace(/\(secondary ID\)/ig, "");
+    const advisors = rest.split("/").map(s => s.replace(/\s*,\s*/g, ", ").trim()).filter(Boolean);
+    rows.set(m[1], { repId: m[1], advisors, secondary, group });
+  }
+  return { rows, asOf };
+}
+const sameAdvisors = (a, b) => (a || []).map(fold).join("|") === (b || []).map(fold).join("|");
+
+let pendingDiff = null;
+function compareList(text, from) {
+  const { rows, asOf } = parseList(text || "");
+  const d = $("diff"); d.replaceChildren(); d.hidden = false;
+  if (!rows.size) { d.append(el("p", { class: "err", text: `No Rep ID lines found in ${from}. Each line should start with the 4-character ID, then "Last, First".` })); return; }
+  const added = [], changed = [], missing = [];
+  for (const n of rows.values()) {
+    const cur = reps.get(n.repId);
+    if (!cur || cur.status === "retired") added.push({ n, cur });
+    else if (!sameAdvisors(cur.advisors, n.advisors) || !!cur.secondary !== n.secondary) changed.push({ n, cur });
+  }
+  for (const r of active()) if (!rows.has(r.repId)) missing.push(r);
+  pendingDiff = { added, changed, missing, asOf };
+
+  d.append(el("p", { text: `Read ${rows.size} Rep IDs from ${from}${asOf ? `, dated ${asOf}` : ""}. ${added.length + changed.length + missing.length ? "Tick the changes to apply." : "The list on this page already matches it."}` }));
+  const box = (key, i) => el("input", { type: "checkbox", checked: true, "data-k": key, "data-i": String(i), "aria-label": "Apply" });
+  if (added.length) d.append(el("div", {}, el("h3", { text: `New on the IFA list (${added.length})` }), el("ul", {}, added.map((a, i) => {
+    const sel = el("select", { "data-g": String(i), "aria-label": "Group" }); fillGroupSelect(sel, a.cur?.group || a.n.group);
+    return el("li", {}, box("added", i), el("span", { class: "rid", text: a.n.repId }),
+      el("span", {}, advText(a.n), sel, el("span", { class: "muted small", text: a.cur ? "  was retired, will be restored" : "  branch to add after" })));
+  }))));
+  if (changed.length) d.append(el("div", {}, el("h3", { text: `Advisors changed (${changed.length})` }), el("ul", {}, changed.map((c, i) =>
+    el("li", {}, box("changed", i), el("span", { class: "rid", text: c.n.repId }),
+      el("span", {}, el("span", { class: "was", text: advText(c.cur) }), advText(c.n)))))));
+  if (missing.length) d.append(el("div", {}, el("h3", { text: `Not on the IFA list, will be retired (${missing.length})` }),
+    el("p", { class: "small muted", text: "Leave unticked any ID that's kept on purpose, such as IDs tracked here but not on the IFA PDF." }),
+    el("ul", {}, missing.map((r, i) => el("li", {}, box("missing", i), el("span", { class: "rid", text: r.repId }), el("span", { text: advText(r) }))))));
+  if (missing.length) d.querySelectorAll('input[data-k="missing"]').forEach(c => { c.checked = false; });
+  const setDate = asOf && asOf !== meta.asOf ? el("label", { class: "check" }, el("input", { type: "checkbox", id: "applyDate", checked: true }), `Set the list date to ${asOf}`) : null;
+  if (setDate) d.append(setDate);
+  if (added.length + changed.length + missing.length || setDate) {
+    const go = el("button", { class: "btn primary", type: "button", text: "Apply ticked changes", id: "applyBtn", disabled: canWrite === false });
+    go.addEventListener("click", () => applyDiff(go));
+    d.append(el("div", { class: "row-actions" }, go, canWrite === false ? lockChip() : null, el("button", { class: "btn", type: "button", text: "Cancel", onclick: () => { d.hidden = true; pendingDiff = null; } })));
+  }
+}
+async function applyDiff(btn) {
+  if (!pendingDiff) return;
+  const d = $("diff"), picked = (k) => [...d.querySelectorAll(`input[data-k="${k}"]`)].filter(c => c.checked).map(c => +c.dataset.i);
+  btn.disabled = true; let n = 0;
+  try {
+    for (const i of picked("added")) {
+      const { n: nr, cur } = pendingDiff.added[i];
+      const group = d.querySelector(`select[data-g="${i}"]`)?.value || nr.group;
+      const row = { ...(cur || { branch: "", primaryPoc: "", note: "" }), repId: nr.repId, advisors: nr.advisors, secondary: nr.secondary, group, status: "active" };
+      delete row.updatedAt; delete row.updatedBy;
+      await writeRep(row);
+      await logChange({ repId: nr.repId, action: cur ? "restored" : "added", summary: `${cur ? "Restored" : "Added"} from IFA list: ${advText(row)}` }); n++;
+    }
+    for (const i of picked("changed")) {
+      const { n: nr, cur } = pendingDiff.changed[i];
+      const row = { ...cur, advisors: nr.advisors, secondary: nr.secondary }; delete row.updatedAt; delete row.updatedBy;
+      await writeRep(row);
+      await logChange({ repId: nr.repId, action: "edited", summary: `From IFA list: advisors ${advText(cur)} → ${advText(row)}` }); n++;
+    }
+    for (const i of picked("missing")) {
+      const cur = pendingDiff.missing[i];
+      const row = { ...cur, status: "retired" }; delete row.updatedAt; delete row.updatedBy;
+      await writeRep(row);
+      await logChange({ repId: cur.repId, action: "retired", summary: "Retired: not on the new IFA list" }); n++;
+    }
+    if ($("applyDate")?.checked) {
+      await db.doc("meta/list").set({ ...meta, asOf: pendingDiff.asOf, updatedAt: new Date().toISOString(), updatedBy: myId || "" });
+      await logChange({ action: "asof", summary: `List date set to ${pendingDiff.asOf} from the IFA list` });
+    }
+    toast(`Applied ${n} change${n === 1 ? "" : "s"}`); d.hidden = true; pendingDiff = null;
+  } catch (e) { toast(writeMsg(e)); btn.disabled = false; }
+}
+
+// ---------- export ----------
+const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+$("exportBtn").addEventListener("click", async () => {
+  const idx = aliasIndex(), ppl = people();
+  const head = ["Rep ID", "Advisor(s)", "Primary POC", "Also Known As", "ID Type", "Group", "Branch", "Branch Source", "OSJ", "Manager ID", "Manager Entity", "Status Note", "As Of", "Lookup Sentence"];
+  const lines = [head.join(",")];
+  for (const r of sortIds(active())) {
+    const g = groupOf(r);
+    const aka = [...new Set((r.advisors || []).flatMap(a => [...(ppl.get(idx.get(fold(a)) || a)?.variants || [])].filter(v => v !== a)))];
+    const sentence = `Rep ID ${r.repId} belongs to ${(r.advisors || []).join(" and ")}${aka.length ? ` (also known as ${aka.join(", ")})` : ""}. ${typeOf(r)} ID. Primary POC ${r.primaryPoc || "not specified"}. Branch ${r.branch || "not on file"}${r.branch === OSJ ? " (OSJ used as branch)" : ""}. OSJ ${OSJ}. Manager ${g.mgr}, ${g.entity}, ${g.label}.`;
+    lines.push([r.repId, advText(r), r.primaryPoc, aka.join("; "), typeOf(r), g.label, r.branch, r.branch === OSJ ? "OSJ used, no distinct branch" : "Branch on file", OSJ, g.mgr, g.entity, r.note, meta.asOf, sentence].map(csvCell).join(","));
+  }
+  try { await downloads.save({ filename: `Winthrop_RepIDs_${(meta.asOf || "current").replace("/", "-")}.csv`, data: lines.join("\r\n") + "\r\n" }); }
+  catch (e) { if (e?.code !== "declined") toast("The download couldn't start here."); }
+});
+
+// ---------- ask Claude ----------
+let askCtl = null;
+$("askGo").addEventListener("click", async () => {
+  const q = str($("askIn").value); if (!q || !sample) return;
+  const out = $("askOut"); out.hidden = false; out.textContent = "Thinking…";
+  askCtl?.abort(); askCtl = new AbortController();
+  const table = sortIds(active()).map(r => [r.repId, advText(r), r.primaryPoc || "", r.branch || "", groupOf(r).mgr, groupOf(r).label, typeOf(r), r.note || ""].join(" | ")).join("\n");
+  const prompt = `You answer questions about Winthrop's LPL / IFA Rep IDs for the operations team.
+Use ONLY the table below (list as of ${meta.asOf || "unknown"}; every rep's OSJ is ${OSJ}). Never invent a Rep ID, advisor, POC or branch. If the table doesn't answer the question, say so plainly.
+Rep IDs must match character for character; several differ by one character (e.g. Q0PK / Q0RK). If the user's ID isn't in the table, say it isn't on the list and offer the closest ID only as a suggestion.
+A branch of ${OSJ} means no distinct branch is on file and the OSJ is used. A blank Primary POC means none has been specified.
+Other names for the same people: ${(meta.aliases || []).map(a => `${a.name} = ${a.aka.join(", ")}`).join("; ") || "none"}.
+Answer in short plain text (no markdown tables). Use "REPID -> Advisors, Branch X" for single-ID answers and a simple list for several.
+
+Rep ID | Advisor(s) | Primary POC | Branch | Manager ID | Group | Type | Status note
+${table}
+
+Question: ${q}`;
+  try {
+    const res = await sample(prompt, { signal: askCtl.signal, cache: false, onText: ({ text }) => { out.textContent = text; } });
+    out.textContent = res.text;
+  } catch (e) {
+    if (e?.code === "cancelled") return;
+    out.textContent = e?.code === "rate_limited" ? "Too many questions in a row. Wait a minute and ask again." : e?.code === "not_granted" ? "Claude isn't available in this view." : "Claude couldn't answer just now. Try again.";
+  }
+});
+
+// ---------- access ----------
+// Everyone sees the upkeep tools; for Viewers every control that changes the list is disabled and flagged.
+const WRITE_CONTROLS = ["newBtn", "eId", "eGroup", "eBranch", "eAdv", "ePoc", "eNote", "eSecondary", "saveBtn", "cancelBtn", "retireBtn", "asOf", "aliases", "metaSave", "applyBtn"];
+function applyWriteAccess() {
+  const ro = !!db && canWrite === false;
+  $("upkeep").hidden = !db;
+  $("exportTool").hidden = !downloads || !repsLoaded;
+  $("viewNote").hidden = !ro;
+  for (const id of WRITE_CONTROLS) { const n = $(id); if (n) n.disabled = ro; }
+  document.querySelectorAll(".needs-contrib").forEach(c => { c.hidden = !ro; });
+}
+
+function renderAll() { renderFacts(); renderGroupSeg(); renderDir(); runSearch(); fillMetaForm(); applyWriteAccess(); }
+
+// ---------- boot ----------
+fillGroupSelect($("eGroup"));
+renderFacts(); renderDir();
+(async () => {
+  const use = (n) => (window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null));
+  [db, user, sample, downloads] = await Promise.all([use("db"), use("user"), use("sample"), use("downloads")]);
+  if (user) { myId = await user.id().catch(() => null); canWrite = await Promise.resolve(user.can?.("data.write")).catch(() => null); }
+  if (sample) $("askBox").hidden = false;
+  if (!db) { renderAll(); return; }
+  db.collection("reps").onSnapshot((snap) => {
+    reps.clear();
+    for (const d of snap.docs) { const v = d.data(); if (v && v.repId) reps.set(v.repId, v); }
+    repsLoaded = true; renderAll();
+  }, () => { repsLoaded = true; renderAll(); });
+  db.doc("meta/list").onSnapshot((s) => {
+    const v = s.exists ? s.data() : {};
+    meta = { asOf: str(v.asOf), aliases: Array.isArray(v.aliases) ? v.aliases : [] };
+    metaLoaded = true; renderAll();
+  }, () => {});
+  db.collection("changes").orderBy("at", "desc").limit(25).onSnapshot((snap) => {
+    histDocs = snap.docs.map(d => d.data()); renderHist();
+  }, () => {});
+})();
+})();
+</script>
+
+</body></html>

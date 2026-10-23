@@ -2,7 +2,7 @@
 
 A single-page tool for account opening. Upload a custodian statement or a trust, estate, POA or entity document, and Claude extracts the registration and titling, the parties and the beneficiaries. A person checks every field, then saves the record to a shared team log.
 
-Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (private Claude artifact)
+Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (Claude artifact, shared with the organization)
 
 ## How it works
 
@@ -24,7 +24,8 @@ Live page: https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo (private Claude art
 - Page references cite the PDF page and, when different, the printed one: "p.28 (printed 27)".
 - All flags are kept, including through Re-read (earlier flags and their resolution notes carry forward). The editor shows the first 4 with "Show N more flags"; the log shows each record's flag count and unresolved count, and can be filtered to Draft, Reviewed, or records with unresolved flags.
 - A code-level check (`nameSpellingFlags`) flags: the same surname with first names one or two letters apart; common nicknames under one surname (Bill / William); and the same first name with surnames one or two letters apart (Doe / Dow), across the extracted names and the document text. Pairs with different middle initials or known, different birth dates are skipped.
-- Access rules (published with the page): client records, their history, saved document text and the deletion log can be read and written only at Contributor level or above. Viewers see the page but not the team log, with a message explaining why.
+- Access rules (published with the page, also in `artifact.json`): client records, their history, saved document text and the deletion log can be read by anyone who can open the page and written only at Contributor level or above. Viewers can read documents with Claude, browse the team log, Re-read and export; Save and Mark reviewed are disabled for them, each with a "Contributor access needed" flag, and a notice at the top explains it.
+- Source account numbers, like tax IDs, show only their last 4 digits until Show is clicked.
 - Review, flag and delete rules are enforced by the page; a Contributor could change data directly, so Contributor access is the boundary.
 - For text-only reads (text PDFs, Word, pasted text, batch-transcribed scans), the text Claude read is kept in `sources/<record id>` (split into `parts/<n>` under the 256 KiB document cap). The Re-read button on a saved record runs the extraction again from it, keeping team notes and the SharePoint link. Deleting a record deletes its saved text.
 
@@ -34,4 +35,4 @@ The page runs as a claude.ai artifact with the `sample` (Claude), `db` (team log
 
 ## Updating the live page
 
-Edit `index.html`, then republish it to the artifact URL above from Claude Code.
+Edit `index.html`, then republish it to the artifact URL above from Claude Code with the capabilities in `artifact.json`.

@@ -1,0 +1,687 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>ACAT Transfer Assistant</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --panel-alt: #eef1f4;
+    --border: #d6dde3;
+    --text: #1c2630;
+    --text-muted: #5b6b78;
+    --accent: #1a5f9c;
+    --accent-soft: #e5eef6;
+    --ok: #1a7f4e;
+    --ok-soft: #e4f5ec;
+    --warn: #b5760a;
+    --warn-soft: #fcf0dc;
+    --bad: #b3261e;
+    --bad-soft: #fbe6e5;
+    --mono-bg: #0f1720;
+    --mono-text: #cfe3f2;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(20,30,40,0.08), 0 1px 2px rgba(20,30,40,0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11161b; --panel: #1a2128; --panel-alt: #212a32; --border: #313c46;
+      --text: #e7edf2; --text-muted: #9aacb8; --accent: #5b9bd5; --accent-soft: #1d2f3e;
+      --ok: #4fbf8b; --ok-soft: #173327; --warn: #e0ad4f; --warn-soft: #3a2f17;
+      --bad: #e2726b; --bad-soft: #3a2020; --mono-bg: #0b1016; --mono-text: #bcd6e8;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11161b; --panel: #1a2128; --panel-alt: #212a32; --border: #313c46;
+    --text: #e7edf2; --text-muted: #9aacb8; --accent: #5b9bd5; --accent-soft: #1d2f3e;
+    --ok: #4fbf8b; --ok-soft: #173327; --warn: #e0ad4f; --warn-soft: #3a2f17;
+    --bad: #e2726b; --bad-soft: #3a2020; --mono-bg: #0b1016; --mono-text: #bcd6e8;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px; line-height: 1.5; padding: 0 16px 60px;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+
+  header.app-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    padding: 22px 0 14px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+  }
+  header.app-header h1 { font-size: 19px; margin: 0 0 4px; }
+  header.app-header p { margin: 0; color: var(--text-muted); font-size: 13px; max-width: 640px; }
+  .theme-toggle {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 12px; white-space: nowrap;
+  }
+
+  .banner {
+    background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius);
+    padding: 12px 16px; margin-bottom: 20px; font-size: 13px;
+  }
+  .banner strong { display:block; margin-bottom: 4px; }
+
+  section.panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 20px;
+  }
+  section.panel > h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; }
+  section.panel > h2 .muted { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius); padding: 24px;
+    text-align: center; color: var(--text-muted); cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  .drop-zone input { display: none; }
+  .drop-zone .browse { color: var(--accent); font-weight: 600; }
+
+  .file-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-radius: 8px; background: var(--panel-alt); margin-top: 8px; font-size: 13px; gap: 10px;
+  }
+  .file-row .status { font-size: 12px; color: var(--text-muted); flex: 1; text-align: right; }
+  .file-row .status.warn { color: var(--warn); font-weight: 600; }
+
+  button {
+    font: inherit; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-alt); color: var(--text); padding: 7px 13px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.small { padding: 4px 9px; font-size: 12px; }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+
+  table.records, table.ref-table {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
+  }
+  table.records th, table.records td, table.ref-table th, table.ref-table td {
+    border: 1px solid var(--border); padding: 5px 7px; text-align: left; vertical-align: top;
+  }
+  table.records th, table.ref-table th { background: var(--panel-alt); font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); white-space: nowrap; }
+  table.records input, table.records select, table.ref-table input, table.ref-table select {
+    border: none; background: transparent; padding: 2px; width: 100%; font-size: 12.5px; color: var(--text); font-family: inherit;
+  }
+  table.records input:focus, table.records select:focus, table.ref-table input:focus { outline: 1px solid var(--accent); border-radius: 4px; }
+  table.records td.narrow { width: 90px; }
+  .alt-candidates { display:block; font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+  .warn-cell ul { margin: 0; padding-left: 14px; }
+  .warn-cell li { color: var(--warn); }
+  .warn-cell li.bad { color: var(--bad); }
+  .table-scroll { overflow-x: auto; }
+
+  .raw-text {
+    background: var(--mono-bg); color: var(--mono-text); border-radius: 8px; padding: 10px 12px;
+    font-family: "SF Mono", Consolas, monospace; font-size: 11.5px; max-height: 220px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word; margin-top: 8px;
+  }
+  details > summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+
+  .empty-state { color: var(--text-muted); font-size: 13px; padding: 10px 2px; }
+  footer { text-align: center; color: var(--text-muted); font-size: 11.5px; padding-top: 10px; }
+</style>
+<div class="wrap">
+
+  <header class="app-header">
+    <div>
+      <h1>ACAT Statement → Transfer Form Assistant <span style="font-weight:400;color:var(--text-muted)">(Prototype)</span></h1>
+      <p>Reads a client's custodial statement and helps you assemble the fields LPL's Account Transfer Form (F2) needs — delivering firm, clearing firm, account number, registration, account type, and assets.</p>
+    </div>
+  </header>
+
+  <div class="banner">
+    <strong>How this works &amp; its limits</strong>
+    Statement PDFs with a text layer are read entirely in your browser — nothing is uploaded or saved. For image-based (scanned) statements, "Read with Claude" sends images of the pages to Claude on your own Claude account to transcribe the text; you'll be asked to allow it the first time. Records on this page are not saved: export or copy them before you close it. Populated fields are <strong>best-effort suggestions only</strong> — always verify every field against the source statement before using it on a real transfer form. This tool does not submit anything to LPL, Schwab, or anyone else.
+  </div>
+
+  <section class="panel">
+    <h2>1. Load statements <span class="muted">PDF, one or more files</span></h2>
+    <div class="drop-zone" id="dropZone">
+      Drag a statement PDF here, or <span class="browse">browse files</span>
+      <input type="file" id="fileInput" accept="application/pdf" multiple>
+    </div>
+    <div id="fileList"></div>
+    <div class="toolbar">
+      <button class="primary" id="populateBtn">⚡ Populate records from loaded files</button>
+      <button id="addBlankRow">+ Add blank record</button>
+      <span class="muted" id="populateStatus" style="font-size:12px;color:var(--text-muted);"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Account records <span class="muted" id="recordCount"></span></h2>
+    <div class="table-scroll">
+      <table class="records" id="recordsTable"></table>
+    </div>
+    <div class="empty-state" id="recordsEmpty">No records yet — load statement(s) above and click "Populate records", or add a blank record to enter one by hand.</div>
+  </section>
+
+  <section class="panel">
+    <h2>3. Export</h2>
+    <div class="toolbar" style="margin-top:0;">
+      <button class="primary" id="exportCsv">Download CSV (all records)</button>
+      <button id="copyAll">Copy all summaries to clipboard</button>
+      <span id="exportStatus" role="status" style="font-size:12px;color:var(--text-muted);"></span>
+    </div>
+    <textarea id="copyFallback" hidden readonly rows="8" aria-label="Record summaries" style="width:100%;margin-top:10px;font:12px Consolas,monospace;background:var(--panel-alt);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;"></textarea>
+  </section>
+
+  <section class="panel">
+    <h2>Clearing firm reference table <span class="muted">local only — edit freely, saved in this browser</span></h2>
+    <p style="color:var(--text-muted);font-size:12.5px;margin-top:0;">
+      Seed data below mixes confirmed facts (from real statements) and an unverified 2020 reference sheet from a different broker-dealer's internal job aid, found via public web search. Treat anything marked "Reference — verify" as a starting point only, not as authoritative. Replace it with LPL's own ACAT-eligible-firm list (Resource Center → Account Transfers) as you confirm entries.
+    </p>
+    <div class="table-scroll"><table class="ref-table" id="refTable"></table></div>
+    <button id="addRefRow" class="small" style="margin-top:8px;">+ Add row</button>
+  </section>
+
+  <footer>Internal prototype — Winthrop Asset Group operations use only. Not an official LPL or Schwab tool.</footer>
+</div>
+
+<script>
+// ---------- Page capabilities ----------
+// Claude (reads scanned pages) and file saves come from the claude.ai viewer;
+// either may be null, in which case its button is hidden or explains why.
+let sample = null, sampleLimits = null, downloads = null;
+if (window.claude && claude.use) {
+  claude.use('sample').then(async s => {
+    sample = s;
+    if (s) { try { sampleLimits = await s.limits(); } catch (e) { sampleLimits = null; } }
+    renderFileList();
+  });
+  claude.use('downloads').then(d => { downloads = d; });
+}
+
+// ---------- pdf.js setup ----------
+let pdfReady = false;
+try {
+  if (window['pdfjsLib']) {
+    // pdf.worker.min.js is loaded above as a plain <script>, which sets
+    // window.pdfjsWorker — pdf.js detects that global and uses it directly
+    // in-process, with no network/blob fetch for the worker at all.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'embedded-worker-not-fetched.js';
+    pdfReady = true;
+  }
+} catch (e) { pdfReady = false; }
+
+// ---------- LPL account type vocabulary ----------
+const ACCOUNT_TYPES = [
+  "Individual","Joint","Qualified Plan","403(b)7","Corporate/Business","Trust","Estate",
+  "UGMA/UTMA","SEP IRA","Traditional or Rollover IRA","Roth IRA","SIMPLE IRA",
+  "Beneficiary IRA","Roth Beneficiary IRA","Coverdell ESA","Other"
+];
+const TRANSFER_TYPES = [
+  ["full_in_kind","Transfer ALL assets in kind"],
+  ["partial_in_kind","Transfer only part of account in kind"],
+  ["liquidate_all","Liquidate ALL assets and transfer as cash"],
+  ["liquidate_partial","Liquidate only part of account as cash"],
+  ["cash_only","Transfer cash only"],
+];
+
+// ---------- Reference data (clearing firms) ----------
+const DEFAULT_REF = [
+  { firm: "Fidelity", clearing: "National Financial Services LLC (NFS)", dtc: "0226", confidence: "Confirmed (statement-stated)" },
+  { firm: "Charles Schwab", clearing: "Charles Schwab (self-clearing)", dtc: "0164", confidence: "Reference — verify" },
+  { firm: "Morgan Stanley / E*TRADE from Morgan Stanley", clearing: "Morgan Stanley Smith Barney LLC (self-clearing)", dtc: "0015 (older listing — unverified)", confidence: "Reference — verify" },
+  { firm: "Osaic", clearing: "Pershing LLC", dtc: "unverified — Cetera list only shows 'Pershing Advisor Solutions' (0443), may differ from plain Pershing LLC", confidence: "Reference — verify" },
+  { firm: "Vanguard Brokerage Services", clearing: "Vanguard Brokerage Services", dtc: "0062", confidence: "Reference — verify" },
+  { firm: "Raymond James & Associates", clearing: "Raymond James & Associates", dtc: "0725", confidence: "Reference — verify" },
+  { firm: "Edward Jones", clearing: "Edward Jones", dtc: "0057", confidence: "Reference — verify" },
+  { firm: "UBS Financial Services", clearing: "UBS Financial Services", dtc: "0221", confidence: "Reference — verify" },
+  { firm: "RBC (historical: RBC Dain Rauscher)", clearing: "RBC Capital Markets / RBC Clearing & Custody", dtc: "0235 (name outdated — verify current entity)", confidence: "Reference — verify" },
+  { firm: "LPL Financial (receiving firm, for reference)", clearing: "LPL Financial", dtc: "0075", confidence: "Confirmed (from F2 form)" },
+];
+
+function loadRef() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('acat_ref_table_v1') || 'null');
+    return Array.isArray(saved) && saved.length ? saved : DEFAULT_REF.slice();
+  } catch (e) { return DEFAULT_REF.slice(); }
+}
+function saveRef() {
+  try { localStorage.setItem('acat_ref_table_v1', JSON.stringify(refTable)); } catch (e) { /* storage unavailable */ }
+}
+let refTable = loadRef();
+
+function esc(s) { return (s === undefined || s === null ? '' : s).toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderRefTable() {
+  const el = document.getElementById('refTable');
+  let html = '<tr><th>Contra / Delivering Firm</th><th>Clearing Firm</th><th>DTC / Clearing #</th><th>Confidence</th><th></th></tr>';
+  refTable.forEach((row, i) => {
+    html += `<tr>
+      <td><input value="${esc(row.firm)}" data-i="${i}" data-k="firm"></td>
+      <td><input value="${esc(row.clearing)}" data-i="${i}" data-k="clearing"></td>
+      <td><input value="${esc(row.dtc)}" data-i="${i}" data-k="dtc"></td>
+      <td><input value="${esc(row.confidence)}" data-i="${i}" data-k="confidence"></td>
+      <td><button class="small ghost" data-del="${i}">✕</button></td>
+    </tr>`;
+  });
+  el.innerHTML = html;
+  el.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', () => { refTable[+inp.dataset.i][inp.dataset.k] = inp.value; saveRef(); });
+  });
+  el.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', () => { refTable.splice(+btn.dataset.del, 1); saveRef(); renderRefTable(); });
+  });
+}
+document.getElementById('addRefRow').addEventListener('click', () => {
+  refTable.push({ firm: '', clearing: '', dtc: '', confidence: 'Reference — verify' });
+  saveRef(); renderRefTable();
+});
+renderRefTable();
+
+function lookupClearing(firmGuess) {
+  if (!firmGuess) return null;
+  const lower = firmGuess.toLowerCase();
+  return refTable.find(r => r.firm && lower.includes(r.firm.split('(')[0].split('/')[0].trim().toLowerCase().split(' ')[0])) || null;
+}
+
+// ---------- Heuristic detection ----------
+const FIRM_KEYWORDS = [
+  { re: /e\*trade/i, firm: 'E*TRADE from Morgan Stanley (Morgan Stanley Smith Barney LLC)' },
+  { re: /morgan stanley/i, firm: 'Morgan Stanley' },
+  { re: /fidelity/i, firm: 'Fidelity' },
+  { re: /osaic/i, firm: 'Osaic' },
+  { re: /charles schwab|schwab/i, firm: 'Charles Schwab' },
+  { re: /raymond james/i, firm: 'Raymond James' },
+  { re: /edward jones/i, firm: 'Edward Jones' },
+  { re: /\bubs\b/i, firm: 'UBS Financial Services' },
+  { re: /vanguard/i, firm: 'Vanguard Brokerage Services' },
+  { re: /merrill/i, firm: 'Merrill Lynch' },
+  { re: /wells fargo/i, firm: 'Wells Fargo' },
+  { re: /ameriprise/i, firm: 'Ameriprise' },
+  { re: /lpl financial/i, firm: 'LPL Financial' },
+  { re: /pershing/i, firm: '(Pershing-cleared — identify actual contra firm name, Pershing is likely the clearing firm not the delivering firm)' },
+];
+const ACCOUNT_NUMBER_PATTERNS = [
+  /\b\d{3}-\d{6}-\d{3}\b/g,
+  /\b\d{2}[A-Z]-\d{6}\b/g,
+  /\b[A-Z]\d{2}-\d{6}\b/g,
+  /\b\d{3}-\d{6}\b/g,
+  /Account\s*(?:Number|#)\s*[:#]?\s*([A-Z0-9-]{6,15})/gi,
+];
+const TYPE_KEYWORDS = [
+  [/roth beneficiary/i, "Roth Beneficiary IRA"],
+  [/beneficiary ira/i, "Beneficiary IRA"],
+  [/roth ira/i, "Roth IRA"],
+  [/simple ira/i, "SIMPLE IRA"],
+  [/sep ira/i, "SEP IRA"],
+  [/rollover ira|traditional ira/i, "Traditional or Rollover IRA"],
+  [/coverdell/i, "Coverdell ESA"],
+  [/403\(b\)/i, "403(b)7"],
+  [/u[gt]ma/i, "UGMA/UTMA"],
+  [/\btrust\b|\bttee\b/i, "Trust"],
+  [/estate/i, "Estate"],
+  [/joint/i, "Joint"],
+  [/corporate|business/i, "Corporate/Business"],
+  [/individual/i, "Individual"],
+];
+function hsaDetected(text) { return /health savings|\bhsa\b/i.test(text); }
+function detectAccountType(text) {
+  if (hsaDetected(text)) return '__HSA__';
+  for (const [re, label] of TYPE_KEYWORDS) if (re.test(text)) return label;
+  return '';
+}
+function detectFirm(text) {
+  for (const k of FIRM_KEYWORDS) if (k.re.test(text)) return k.firm;
+  return '';
+}
+function detectAccountNumbers(text) {
+  const found = new Set();
+  for (const re of ACCOUNT_NUMBER_PATTERNS) {
+    let m;
+    const rx = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+    while ((m = rx.exec(text)) !== null) {
+      const val = (m[1] || m[0]).trim();
+      // require at least one digit so label-matching patterns can't capture
+      // a stray word (e.g. "Beginning" from an "Account Number ... Beginning
+      // Value" table header) as if it were an account number
+      if (val.length >= 6 && val.length <= 16 && /\d/.test(val)) found.add(val);
+      if (found.size > 20) break;
+    }
+  }
+  let candidates = Array.from(found);
+  // a longer/more specific match (e.g. "676-718283-201") makes any shorter
+  // match that's just a prefix of it (e.g. "676-718283") a false duplicate —
+  // drop anything that's wholly contained inside a longer candidate
+  candidates = candidates.filter(c => !candidates.some(other => other !== c && other.length > c.length && other.includes(c)));
+  return candidates.slice(0, 12);
+}
+
+// ---------- Loaded files ----------
+const MIN_USABLE_TEXT = 40; // below this, treat the PDF as having no real text layer
+let loadedFiles = []; // { id, name, file, text, status, used, lowText, ocrBusy }
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+async function handleFiles(fileList) {
+  for (const file of Array.from(fileList)) {
+    const entry = { id: 'f' + Math.random().toString(36).slice(2), name: file.name, file, text: '', status: 'Reading…', used: false, lowText: false, ocrBusy: false };
+    loadedFiles.push(entry);
+    renderFileList();
+    try {
+      entry.text = await extractText(file);
+      if (entry.text.trim().length < MIN_USABLE_TEXT) {
+        entry.lowText = true;
+        entry.status = 'No extractable text found — this PDF appears to be image-based. Read it with Claude, or add a blank record and transcribe by hand.';
+      } else {
+        entry.status = 'Parsed — ' + entry.text.length + ' characters, ready to populate';
+      }
+    } catch (err) {
+      entry.lowText = true;
+      const raw = err && err.message || 'unknown error';
+      const hint = 'Could not parse (' + raw + ')';
+      entry.status = hint + ' — read it with Claude, or add a blank record and transcribe manually.';
+    }
+    renderFileList();
+  }
+}
+
+function renderFileList() {
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  loadedFiles.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    const statusClass = f.lowText ? 'status warn' : 'status';
+    const ocrBtn = f.lowText && sample && sampleLimits && sampleLimits.images
+      ? `<button class="small" data-ocr="${f.id}" ${f.ocrBusy ? 'disabled' : ''}>${f.ocrBusy ? 'Reading…' : 'Read with Claude'}</button>`
+      : '';
+    row.innerHTML = `<span>${esc(f.name)}</span>${ocrBtn}<span class="${statusClass}">${esc(f.status)}</span>`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('[data-ocr]').forEach(btn => {
+    btn.addEventListener('click', () => runOcr(btn.dataset.ocr));
+  });
+}
+
+async function extractText(file) {
+  if (!pdfReady || !window.pdfjsLib) throw new Error('PDF library unavailable (offline on first load?)');
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+// ---------- Image-based PDFs: Claude transcribes the pages ----------
+// Pages are rendered to images in the browser and sent to Claude in batches;
+// the transcribed text then goes through the same detection as a text PDF.
+const OCR_PROMPT = 'These images are consecutive pages of a brokerage or custodial account statement. ' +
+  'Transcribe all of the text on them exactly as printed, page by page, in reading order. ' +
+  'Keep account numbers, names, registrations and dollar amounts character for character. ' +
+  'Do not summarize, correct or add anything. Reply with only the transcribed text.';
+
+function canvasBlob(canvas) {
+  return new Promise((res, rej) => canvas.toBlob(b => b ? res(b) : rej(new Error('could not render page')), 'image/jpeg', 0.9));
+}
+function sampleErrorText(err) {
+  switch (err && err.code) {
+    case 'not_granted': return 'Claude was not allowed for this page';
+    case 'rate_limited': return 'Claude is busy — wait a minute and try again';
+    case 'cancelled': return 'stopped';
+    default: return (err && err.message) || 'unknown error';
+  }
+}
+
+async function runOcr(fileId) {
+  const entry = loadedFiles.find(f => f.id === fileId);
+  if (!entry || entry.ocrBusy || !sample) return;
+  entry.ocrBusy = true;
+  entry.status = 'Preparing pages…';
+  renderFileList();
+  try {
+    if (!pdfReady || !window.pdfjsLib) throw new Error('PDF library unavailable');
+    const perCall = Math.max(1, (sampleLimits && sampleLimits.images && sampleLimits.images.maxCount) || 1);
+    const buf = await entry.file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = '';
+    for (let start = 1; start <= doc.numPages; start += perCall) {
+      const end = Math.min(doc.numPages, start + perCall - 1);
+      const images = [];
+      for (let i = start; i <= end; i++) {
+        const page = await doc.getPage(i);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        images.push(await canvasBlob(canvas));
+      }
+      entry.status = doc.numPages === 1 ? 'Claude is reading the page…' : `Claude is reading pages ${start}–${end} of ${doc.numPages}…`;
+      renderFileList();
+      const res = await sample(OCR_PROMPT + ` (Pages ${start} to ${end} of ${doc.numPages}.)`, { images, modelTier: 'default' });
+      text += (res.text || '') + '\n';
+    }
+    entry.text = text;
+    entry.lowText = text.trim().length < MIN_USABLE_TEXT;
+    entry.status = entry.lowText
+      ? 'Claude found little text — add a blank record and transcribe manually.'
+      : 'Read by Claude — ' + text.length + ' characters, ready to populate. Check scanned values carefully.';
+  } catch (err) {
+    entry.status = 'Reading failed (' + sampleErrorText(err) + ') — add a blank record and transcribe manually';
+  } finally {
+    entry.ocrBusy = false;
+    renderFileList();
+  }
+}
+
+// ---------- Records ----------
+let records = [];
+let recordSeq = 0;
+function newRecord(seed) {
+  recordSeq++;
+  return Object.assign({
+    id: 'r' + recordSeq, sourceFile: '',
+    deliveringFirmName: '',
+    clearingFirm: '', dtcNumber: '', clearingConfidence: '',
+    accountNumber: '', accountNumberCandidates: [],
+    accountRegistration: '', accountType: '',
+    transferType: 'full_in_kind', assetsText: '',
+    splitFromMultiAccount: false,
+  }, seed || {});
+}
+
+document.getElementById('addBlankRow').addEventListener('click', () => { records.push(newRecord()); renderRecordsTable(); });
+
+document.getElementById('populateBtn').addEventListener('click', () => {
+  const pending = loadedFiles.filter(f => !f.used);
+  const toProcess = pending.filter(f => f.text && f.text.trim().length >= MIN_USABLE_TEXT);
+  const skipped = pending.filter(f => !(f.text && f.text.trim().length >= MIN_USABLE_TEXT));
+
+  toProcess.forEach(f => {
+    buildRecordsFromText(f.text, f.name).forEach(r => records.push(r));
+    f.used = true;
+  });
+
+  let msg = '';
+  if (toProcess.length) msg += `Populated ${toProcess.length} record(s). `;
+  if (skipped.length) msg += `Skipped ${skipped.length} file(s) with no usable text — read them with Claude or add a blank record for those.`;
+  if (!toProcess.length && !skipped.length) msg = loadedFiles.length ? 'All loaded files already populated.' : 'Load a statement file first.';
+  document.getElementById('populateStatus').textContent = msg;
+
+  renderFileList();
+  renderRecordsTable();
+});
+
+function buildRecordsFromText(text, fileName) {
+  const firmGuess = detectFirm(text);
+  const refMatch = lookupClearing(firmGuess);
+  const accountCandidates = detectAccountNumbers(text);
+  const sharedFields = {
+    deliveringFirmName: firmGuess || '',
+    clearingFirm: refMatch ? refMatch.clearing : '',
+    dtcNumber: refMatch ? refMatch.dtc : '',
+    clearingConfidence: refMatch ? refMatch.confidence : '',
+  };
+
+  // Multiple distinct account numbers found in one statement => treat as a
+  // multi-account (household) statement and create one row per account.
+  if (accountCandidates.length > 1) {
+    return accountCandidates.map(acct => newRecord(Object.assign({}, sharedFields, {
+      sourceFile: fileName,
+      accountNumber: acct,
+      accountNumberCandidates: [],
+      // account type isn't reliably attributable to a specific sub-account
+      // from whole-document keyword search, so leave it for manual review
+      // rather than propagate one guess across every split row.
+      accountType: '',
+      splitFromMultiAccount: true,
+    })));
+  }
+
+  return [newRecord(Object.assign({}, sharedFields, {
+    sourceFile: fileName,
+    accountNumber: accountCandidates[0] || '',
+    accountNumberCandidates: [],
+    accountType: detectAccountType(text) || '',
+  }))];
+}
+
+function computeWarnings(r) {
+  const w = [];
+  if (r.splitFromMultiAccount) w.push({ msg: 'Auto-split from a multi-account statement — verify this is a real distinct account, and set its account type manually.', bad: false });
+  if (!r.accountNumber) w.push({ msg: 'No account number.', bad: true });
+  if (!r.accountRegistration) w.push({ msg: 'Registration missing — must match statement exactly.', bad: true });
+  if (!r.accountType) w.push({ msg: 'Account type not set.', bad: true });
+  if (r.accountType === '__HSA__') w.push({ msg: 'HSA — not on LPL\'s account-type list. Confirm process.', bad: true });
+  if (!r.clearingFirm) w.push({ msg: 'Clearing firm not set.', bad: false });
+  else if (r.clearingConfidence && r.clearingConfidence.toLowerCase().includes('verify')) w.push({ msg: 'Clearing firm unverified — confirm before use.', bad: false });
+  return w;
+}
+
+function renderRecordsTable() {
+  const el = document.getElementById('recordsTable');
+  const emptyMsg = document.getElementById('recordsEmpty');
+  document.getElementById('recordCount').textContent = records.length ? `(${records.length})` : '';
+  emptyMsg.style.display = records.length ? 'none' : 'block';
+  el.style.display = records.length ? 'table' : 'none';
+  if (!records.length) { el.innerHTML = ''; return; }
+
+  const typeOpts = ACCOUNT_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  const transferOpts = TRANSFER_TYPES.map(([v,l]) => `<option value="${v}">${esc(l)}</option>`).join('');
+
+  let html = `<tr>
+    <th>Source</th><th>Delivering Firm</th>
+    <th>Clearing Firm</th><th>DTC/#</th><th>Confidence</th>
+    <th>Account #</th><th>Registration</th><th>Type</th><th>Transfer</th><th>Assets</th><th>Flags</th><th></th>
+  </tr>`;
+
+  records.forEach((r, i) => {
+    const typeSelect = `<select data-i="${i}" data-f="accountType">
+        <option value="">— select —</option>
+        ${r.accountType === '__HSA__' ? '<option value="__HSA__" selected>HSA (not on list)</option>' : ''}
+        ${ACCOUNT_TYPES.map(t => `<option value="${esc(t)}" ${r.accountType===t?'selected':''}>${esc(t)}</option>`).join('')}
+      </select>`;
+    const transferSelect = `<select data-i="${i}" data-f="transferType">
+        ${TRANSFER_TYPES.map(([v,l]) => `<option value="${v}" ${r.transferType===v?'selected':''}>${esc(l)}</option>`).join('')}
+      </select>`;
+    const warns = computeWarnings(r);
+    const warnHtml = warns.length
+      ? '<ul>' + warns.map(w => `<li class="${w.bad?'bad':''}">${esc(w.msg)}</li>`).join('') + '</ul>'
+      : '<span style="color:var(--ok);">OK</span>';
+
+    html += `<tr>
+      <td class="narrow">${esc(r.sourceFile || 'manual')}</td>
+      <td><input data-i="${i}" data-f="deliveringFirmName" value="${esc(r.deliveringFirmName)}"></td>
+      <td><input data-i="${i}" data-f="clearingFirm" value="${esc(r.clearingFirm)}"></td>
+      <td><input data-i="${i}" data-f="dtcNumber" value="${esc(r.dtcNumber)}"></td>
+      <td><input data-i="${i}" data-f="clearingConfidence" value="${esc(r.clearingConfidence)}"></td>
+      <td>
+        <input data-i="${i}" data-f="accountNumber" value="${esc(r.accountNumber)}">
+        ${r.accountNumberCandidates.length ? `<span class="alt-candidates">other candidates: ${esc(r.accountNumberCandidates.join(', '))}</span>` : ''}
+      </td>
+      <td><input data-i="${i}" data-f="accountRegistration" value="${esc(r.accountRegistration)}" placeholder="exact text from statement"></td>
+      <td class="narrow">${typeSelect}</td>
+      <td class="narrow">${transferSelect}</td>
+      <td><input data-i="${i}" data-f="assetsText" value="${esc(r.assetsText)}" placeholder="CUSIP:Shares:InKind/Liquidate; ..."></td>
+      <td class="warn-cell">${warnHtml}</td>
+      <td><button class="small ghost" data-remove="${i}">✕</button></td>
+    </tr>`;
+  });
+
+  el.innerHTML = html;
+  el.querySelectorAll('[data-f]').forEach(inp => {
+    inp.addEventListener('input', () => { records[+inp.dataset.i][inp.dataset.f] = inp.value; });
+    inp.addEventListener('change', () => { renderRecordsTable(); });
+  });
+  el.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', () => { records.splice(+btn.dataset.remove, 1); renderRecordsTable(); });
+  });
+}
+renderRecordsTable();
+
+// ---------- Export ----------
+function formatRecordText(r) {
+  return [
+    `Delivering firm: ${r.deliveringFirmName}`,
+    `Clearing firm: ${r.clearingFirm} (DTC/clearing #: ${r.dtcNumber}) — ${r.clearingConfidence}`,
+    `Account number: ${r.accountNumber}`,
+    `Account registration: ${r.accountRegistration}`,
+    `Account type: ${r.accountType === '__HSA__' ? 'HSA (not on LPL list — verify process)' : r.accountType}`,
+    `Transfer instructions: ${r.transferType}`,
+    r.assetsText ? `Assets: ${r.assetsText}` : '',
+    `Source file: ${r.sourceFile || '(manual entry)'}`,
+  ].filter(Boolean).join('\n');
+}
+function setExportStatus(msg) { document.getElementById('exportStatus').textContent = msg; }
+document.getElementById('copyAll').addEventListener('click', async () => {
+  const text = records.map(formatRecordText).join('\n\n---\n\n');
+  if (!records.length) { setExportStatus('No records to copy yet.'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    setExportStatus('Copied ' + records.length + ' summaries.');
+  } catch (e) {
+    // Some views refuse clipboard writes: show the text selected so Ctrl+C copies it.
+    const box = document.getElementById('copyFallback');
+    box.hidden = false; box.value = text; box.focus(); box.select();
+    setExportStatus('Selected below. Press Ctrl+C to copy.');
+  }
+});
+document.getElementById('exportCsv').addEventListener('click', async () => {
+  if (!records.length) { setExportStatus('No records to export yet.'); return; }
+  if (!downloads) { setExportStatus('Saving files isn\'t available in this view. Use Copy all summaries instead.'); return; }
+  const headers = ['Source File','Delivering Firm',
+    'Clearing Firm','DTC/Clearing #','Clearing Confidence','Account Number','Account Registration',
+    'Account Type','Transfer Type','Assets'];
+  const rows = records.map(r => [
+    r.sourceFile, r.deliveringFirmName,
+    r.clearingFirm, r.dtcNumber, r.clearingConfidence, r.accountNumber, r.accountRegistration,
+    r.accountType === '__HSA__' ? 'HSA (not on LPL list)' : r.accountType,
+    r.transferType, r.assetsText
+  ]);
+  const csv = [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
+  try {
+    await downloads.save({ filename: 'acat_transfer_records.csv', data: csv });
+    setExportStatus('Saved acat_transfer_records.csv.');
+  } catch (e) {
+    setExportStatus(e && e.code === 'declined' ? 'Save cancelled.' : 'The CSV couldn\'t be saved here. Use Copy all summaries instead.');
+  }
+});
+function csvCell(v) {
+  v = (v === undefined || v === null) ? '' : String(v);
+  if (/[",\n]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+  return v;
+}
+</script>
+
+</body></html>
