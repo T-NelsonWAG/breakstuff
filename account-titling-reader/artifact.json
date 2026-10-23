@@ -1,0 +1,14 @@
+{
+  "title": "Account Titling Reader",
+  "url": "https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo",
+  "capabilities": {
+    "db": { "rules": [
+      { "path": "extractions", "read": "view", "write": "interact" },
+      { "path": "sources", "read": "view", "write": "interact" },
+      { "path": "deletions", "read": "view", "write": "interact" }
+    ] },
+    "downloads": {},
+    "sample": { "images": true },
+    "user": { "scopes": ["profile"] }
+  }
+}

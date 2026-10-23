@@ -1,0 +1,1611 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>ACAT Statement Reader</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: same family as Account Titling Reader and Rep ID Search. Reader on top, then one card per account, then the team log and the clearing-firm table. */
+:root {
+  --bg: #f7f8f8;
+  --surface: #ffffff;
+  --fg: #1b2124;
+  --muted: #5d6870;
+  --rule: #dde2e4;
+  --accent: #1f5f7a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4eff4;
+  --warn: #8a5300;
+  --warn-bg: #fbf1df;
+  --danger: #a8322d;
+  --danger-bg: #fbe9e7;
+  --ok: #2c6b47;
+  --ok-bg: #e5f2ea;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121618; --surface: #1a1f22; --fg: #e3e8ea; --muted: #95a1a8; --rule: #2c3438;
+    --accent: #7fb6cf; --accent-ink: #0e1a20; --accent-soft: #1d2c33; --warn: #e3ad5a; --warn-bg: #2b2416;
+    --danger: #ec8a80; --danger-bg: #2e1c1a; --ok: #7cc49a; --ok-bg: #18291f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121618; --surface: #1a1f22; --fg: #e3e8ea; --muted: #95a1a8; --rule: #2c3438;
+  --accent: #7fb6cf; --accent-ink: #0e1a20; --accent-soft: #1d2c33; --warn: #e3ad5a; --warn-bg: #2b2416;
+  --danger: #ec8a80; --danger-bg: #2e1c1a; --ok: #7cc49a; --ok-bg: #18291f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 44px; }
+h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
+h1 { font-size: 26px; letter-spacing: -0.01em; }
+h2 { font-size: 18px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+p { margin: 0; max-width: 70ch; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--font-data); }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: grid; gap: 8px; border-bottom: 1px solid var(--rule); padding-bottom: 20px; }
+section { display: grid; gap: 18px; min-width: 0; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+
+button { font: inherit; cursor: pointer; }
+.btn { border: 1px solid var(--rule); background: var(--surface); color: var(--fg); padding: 7px 14px; border-radius: 4px; font-size: 14px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn.danger.armed { background: var(--danger); border-color: var(--danger); color: var(--surface); }
+.btn.small { padding: 3px 9px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font-size: 14px; text-decoration: underline; text-underline-offset: 2px; }
+.copy { border: 1px solid var(--rule); background: var(--surface); color: var(--muted); border-radius: 3px; font-size: 12px; padding: 1px 7px; }
+.copy:hover { color: var(--accent); border-color: var(--accent); }
+
+input[type=text], select, textarea {
+  font: 14px/1.4 var(--font-body); color: var(--fg); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; width: 100%; min-width: 0;
+}
+input.mono { font-family: var(--font-data); font-size: 13px; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* Reader */
+.drop { border: 1.5px dashed var(--rule); border-radius: 6px; background: var(--surface); padding: 26px 20px; display: grid; gap: 10px; justify-items: start; }
+.drop.over { border-color: var(--accent); }
+.drop-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.steps li { display: flex; gap: 8px; align-items: baseline; }
+.steps li::before { content: "○"; color: var(--muted); font-family: var(--font-data); width: 1em; }
+.steps li.on::before { content: "●"; color: var(--accent); }
+.steps li.done::before { content: "✓"; color: var(--ok); }
+.status { display: grid; gap: 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.err { color: var(--danger); font-size: 14px; }
+.notice { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 3px 3px 0; font-size: 14px; }
+
+/* Record */
+.record { display: grid; gap: 26px; }
+.record-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; align-items: baseline; border-bottom: 1px solid var(--rule); padding-bottom: 12px; }
+.firms { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px 24px; }
+.fact { display: grid; gap: 3px; min-width: 0; }
+.fact dt, .fact .k { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.fact .v { font-size: 15px; overflow-wrap: anywhere; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.fact .v.big { font: 600 18px var(--font-data); letter-spacing: 0.02em; }
+.quote { font-size: 13px; color: var(--muted); border-left: 2px solid var(--rule); padding-left: 8px; overflow-wrap: anywhere; }
+.chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.chip.ok { color: var(--ok); background: var(--ok-bg); }
+.chip.warn { color: var(--warn); background: var(--warn-bg); }
+.chip.bad { color: var(--danger); background: var(--danger-bg); }
+.chip.info { color: var(--accent); background: var(--accent-soft); }
+
+.account { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; display: grid; min-width: 0; }
+.account.is-ready { border-color: color-mix(in srgb, var(--ok) 55%, var(--rule)); }
+.acct-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 16px 18px 0; }
+.acct-body { display: grid; gap: 18px; padding: 14px 18px 18px; min-width: 0; }
+.acct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 22px; }
+.acct-grid .wide { grid-column: 1 / -1; }
+label.f { display: grid; gap: 3px; min-width: 0; }
+label.f > span { font-size: 12px; color: var(--muted); }
+.field-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.field-row > input, .field-row > select { flex: 1; }
+
+.flags { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.flags li { display: grid; gap: 6px; padding: 8px 10px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 0 3px 3px 0; font-size: 14px; }
+.flags li.bad { border-left-color: var(--danger); background: var(--danger-bg); }
+.flags li.info { border-left-color: var(--accent); background: var(--accent-soft); }
+.flags li .src { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.flags li input { background: var(--surface); }
+
+.tablewrap { overflow-x: auto; border-top: 1px solid var(--fg); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 7px 8px 7px 4px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+td { padding: 6px 8px 6px 4px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td.n { font-family: var(--font-data); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.m { font-family: var(--font-data); white-space: nowrap; }
+tr.miss td.n, td.miss { color: var(--warn); }
+tfoot td { font-weight: 600; border-bottom: 0; }
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-top: 12px; border-top: 1px solid var(--rule); align-items: center; }
+.check { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.acct-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.acct-actions .spacer { flex: 1; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border-top: 1px solid var(--rule); padding-top: 16px; }
+.actions .spacer { flex: 1; }
+details.fold > summary { cursor: pointer; font-size: 14px; color: var(--accent); }
+details.legend { margin-top: 10px; }
+details.legend > summary { font-size: 13px; }
+.legend-list { margin: 0; display: grid; gap: 8px; font-size: 13px; }
+.legend-list > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
+.legend-list dd { margin: 0; color: var(--muted); }
+.legend-miss { font-family: var(--font-data); color: var(--warn); }
+@media (max-width: 560px) { .legend-list > div { grid-template-columns: 1fr; } }
+details.fold[open] > summary { margin-bottom: 10px; }
+
+/* Log */
+.search { width: min(320px, 100%); }
+.log { display: grid; border-top: 1px solid var(--fg); }
+.log-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--rule); background: none; color: inherit; text-align: left; width: 100%; }
+.log-row:hover { background: var(--surface); }
+.log-row.active { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.log-title { font-weight: 500; overflow-wrap: anywhere; }
+.log-sub { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.log-when { font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.empty { padding: 18px 4px; color: var(--muted); font-size: 14px; border-bottom: 1px solid var(--rule); }
+
+/* Firms table */
+.firm-table td input { padding: 4px 6px; font-size: 13px; }
+.hist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.hist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; padding: 8px 4px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.hist .when { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 4px; font-size: 14px; max-width: calc(100% - 32px); z-index: 20; }
+@media (max-width: 560px) {
+  .log-row { grid-template-columns: 1fr; } .log-when { text-align: left; }
+  .acct-top, .acct-body { padding-left: 12px; padding-right: 12px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>ACAT Statement Reader</h1>
+    <p class="muted">Upload a client's statement from the delivering firm. Claude lists every account with its number, registration, type and positions, and the page checks each value against the statement itself. Check each account, then copy the details into ClientWorks.</p>
+  </header>
+  <p class="notice" id="viewOnly" hidden>You have view access. You can read statements with Claude, browse the team log and clearing firms, copy and export. Saving records and changing the firm table need Contributor access (marked below); ask the page owner to change your access in the Share menu.</p>
+
+  <section aria-labelledby="readH">
+    <div class="sec-head">
+      <h2 id="readH">Read a statement</h2>
+      <button class="linkbtn" id="manualBtn" type="button">Enter an account by hand</button>
+    </div>
+    <div class="drop" id="drop">
+      <p><strong>Drop a statement PDF here</strong> <span class="muted">or</span></p>
+      <div class="drop-actions">
+        <label class="btn primary" for="fileIn">Choose PDF</label>
+        <input id="fileIn" type="file" accept="application/pdf,.pdf" hidden>
+      </div>
+      <p class="small muted">The text of the statement is sent to Claude on your own Claude account; scanned pages are sent as images. The file itself isn't saved. Only the fields you save go to the team log.</p>
+    </div>
+    <div class="status" id="status" hidden aria-live="polite">
+      <ul class="steps" id="steps"></ul>
+      <div class="drop-actions"><button class="btn" id="stopBtn" type="button">Stop</button><span class="small muted" id="statusNote"></span></div>
+    </div>
+    <p class="err" id="readErr" hidden></p>
+    <p class="notice" id="noClaude" hidden>Reading statements needs Claude, which isn't available in this view. Open the page from claude.ai, or enter an account by hand.</p>
+    <div class="record" id="record" hidden></div>
+  </section>
+
+  <section aria-labelledby="logH">
+    <div class="sec-head">
+      <h2 id="logH">Team log <span class="muted small" id="logCount"></span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="logFilter" aria-label="Show records" style="width:auto">
+          <option value="all">All records</option>
+          <option value="draft">Not ready yet</option>
+          <option value="ready">All accounts ready</option>
+        </select>
+        <input type="text" id="search" class="search" placeholder="Search names, firms, account numbers…" aria-label="Search the team log">
+      </div>
+    </div>
+    <div class="log" id="log"><div class="empty" id="logEmpty">Connecting to the team log…</div></div>
+  </section>
+
+  <section aria-labelledby="firmH">
+    <details class="fold" id="firmFold">
+      <summary><h2 id="firmH" style="display:inline">Clearing firms and DTC numbers <span class="muted small" id="firmCount"></span></h2></summary>
+      <div style="display:grid;gap:14px">
+        <p class="small muted">The page matches each statement's clearing firm to this table first, then to DTCC's own list of ACATS participants. Use the table for names DTCC's list doesn't match (brand names, divisions) and for numbers your team has confirmed. Rows stay "Verify" until someone confirms them. Every change is recorded below.</p>
+        <div style="display:grid;gap:8px">
+          <label class="f" style="max-width:420px"><span id="dirLabel">Search DTCC's lists by firm name or number</span><input type="text" id="dirQ" autocomplete="off" spellcheck="false" placeholder="e.g. Pershing, Apex, 0443"></label>
+          <div class="tablewrap" id="dirWrap" hidden><table><thead><tr><th>Number</th><th>Participant</th><th>ACATS</th><th>Location</th><th></th></tr></thead><tbody id="dirBody"></tbody></table></div>
+        </div>
+        <div class="tablewrap">
+          <table class="firm-table">
+            <thead><tr><th>Clearing firm</th><th>Also known as</th><th>DTC #</th><th>Status</th><th>Source</th><th></th></tr></thead>
+            <tbody id="firmBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" id="addFirm">Add a clearing firm</button><span class="chip warn" id="addFirmNeed" hidden title="Viewers can't change the clearing firm table. Ask the page owner for Contributor access in the Share menu.">Contributor access needed</span></div>
+        <details class="fold"><summary>Recent changes</summary><ul class="hist" id="firmHist"></ul></details>
+      </div>
+    </details>
+  </section>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script>
+// DTCC's published lists: NSCC members marked as ACATS participants (number, name, location)
+// and every DTC participant (number, name). Refresh from dtcc.com/support/nscc-directories and dtc-directories.
+const DTCC_DIRECTORY = {"acatsAsOf":"Sept 11, 2026","dtcAsOf":"Sept 30, 2026","acats":[["1476","ADELPHI STOCK BROKERS INC.","Sands Point, NY"],["5515","ALLIANCEBERNSTEIN INVESTMENT RESEARCH AND MANAGEMENT, INC.","NEW YORK, NY"],["5576","ALLSPRING FUNDS DISTRIBUTOR, LLC","Chicago, IL"],["3021","ALPACA SECURITIES LLC","New York, NY"],["8072","ALPINE SECURITIES CORPORATION",""],["4901","ALPS DISTRIBUTORS INC./FIRSTHAND FUNDS",""],["4892","ALPS DISTRIBUTORS INC./LITMAN GREGORY MASTERS FUNDS","Denver, CO"],["4863","ALPS DISTRIBUTORS INC./LONGLEAF PARTNER FUNDS","Denver, CO"],["3144","ALPS DISTRIBUTORS INC./1290 FUNDS","Denver, CO"],["5696","ALPS DISTRIBUTORS INC/WILMINGTON FUNDS",""],["5773","ALPS DISTRIBUTORS, INC./WASATCH FUND ADVISORS","Denver, CO"],["3164","ALTRUIST FINANCIAL LLC","Culver City, CA"],["5646","AMERICAN CENTURY INVESTMENT SERVICES, INC.",""],["0756","AMERICAN ENTERPRISE INVESTMENT SERVICES INC.",""],["5736","AMG FUNDS LLC",""],["0158","APEX CLEARING CORPORATION",""],["0052","AXOS CLEARING LLC","Omaha, NE"],["5981","AXOS CLEARING LLC/AXOS ADVISOR SERVICES","Omaha, NE"],["0955","BANK OF AMERICA N.A.",""],["2251","BANK OF AMERICA, N.A./LASALLE BANK N.A.",""],["2236","BANK OF AMERICA, NATIONAL ASSOCIATION",""],["8420","BANK OF NEW YORK MELLON/NA-BANK CUSTODY","New York, NY"],["0229","BARCLAYS CAPITAL INC.",""],["4862","BARON CAPITAL, INC.",""],["4077","BETA CAPITAL SECURITIES LLC","Miami, FL"],["0537","BGC FINANCIAL, L.P.",""],["5882","BLACKROCK INVESTMENTS, LLC","New York, NY"],["1149","BLUE OWL SECURITIES LLC/BLUE OWL ALTERNATIVE CREDIT FUND","New York, NY"],["2697","BMO BANK NATIONAL ASSOCIATION","Chicago, IL"],["2154","BNP PARIBAS SECURITIES CORP./PRIME BROKERAGE","New York, NY"],["5523","BNY MELLON SECURITIES CORPORATION","New York, NY"],["0161","BOFA SECURITIES, INC.","New York, NY"],["0551","BOFA SECURITIES, INC./BOFA PRIME BROKER","New York, NY"],["0773","BOFA SECURITIES, INC./FIXED INCOME","New York, NY"],["0010","BROWN BROTHERS HARRIMAN \u0026 CO.",""],["5835","CALAMOS FINANCIAL SERVICES LLC",""],["2687","CALDWELL TRUST COMPANY",""],["0197","CANTOR FITZGERALD \u0026 CO. - CANTOR CLEARING SERVICES",""],["5504","CAPITAL CLIENT GROUP, INC./AMERICAN FUNDS",""],["0701","CETERA INVESTMENT SERVICES LLC","Saint Cloud, MN"],["0794","CF SECURED, LLC","New York, NY"],["0164","CHARLES SCHWAB \u0026 CO., INC.",""],["7587","CHARLES SCHWAB \u0026 CO., INC./SCHWAB GLOBAL INVESTING ACCOUNT","Jersey City, NJ"],["2963","CITADEL SECURITIES INSTITUTIONAL LLC","Miami, FL"],["0505","CITIGROUP GLOBAL MARKETS INC.","New York, NY"],["2032","CITIGROUP PVT BANK/TRUST-DTC 2032",""],["9132","CLEAR STREET LLC","New York, NY"],["5780","COHEN \u0026 STEERS SECURITIES, LLC",""],["5501","COLUMBIA MANAGEMENT INVESTMENT DISTRIBUTORS, INC.","Boston, MA"],["2108","COMERICA BANK",""],["5596","COREBRIDGE CAPITAL SERVICES, INC.","Jersey City, NJ"],["0651","CREDIT AGRICOLE SECURITIES (USA) INC.",""],["5801","CROSSMARK DISTRIBUTORS, INC.","Houston, TX"],["3450","CURVATURE SECURITIES, LLC","Chatham, NJ"],["0361","D. A. DAVIDSON \u0026 CO.",""],["0647","DAIWA CAPITAL MARKETS AMERICA INC.","New York, NY"],["5563","DAVIS DISTRIBUTORS, LLC",""],["5965","DAVIS DISTRIBUTORS, LLC/CLIPPER FUND",""],["5850","DAVIS DISTRIBUTORS, LLC/SELECTED",""],["8445","DEALERWEB INC.","Jersey City, NJ"],["5510","DELAWARE DISTRIBUTORS, L.P.","Philadelphia, PA"],["3739","DESTRA CAPITAL INVESTMENTS LLC","Lisle, IL"],["0573","DEUTSCHE BANK SECURITIES INC.",""],["5225","DEUTSCHE BANK SECURITIES INC./FIXED INCOME","New York, NY"],["6684","DFA SECURITIES LLC",""],["4854","DISTRIBUTION SERVICES, LLC","New York, NY"],["3369","DISTRIBUTION SERVICES, LLC/ASPIRIANT FUNDS","Milwaukee, WI"],["5728","DISTRIBUTION SERVICES, LLC/MARSICO INVT FUNDS",""],["2325","DISTRIBUTION SERVICES, LLC/PENDER CAPITAL","Milwaukee, WI"],["6686","DISTRIBUTION SERVICES, LLC/SMEAD","Milwaukee, WI"],["2471","DISTRIBUTION SERVICES, LLC/STEPSTONE FUNDS","Milwaukee, WI"],["3328","DISTRIBUTION SERVICES, LLC/WILDERMUTH FUNDS","Milwaukee, WI"],["5483","DODGE \u0026 COX FUNDS","SAN FRANCISCO, CA"],["2402","DRIVEWEALTH, LLC","Chatham, NJ"],["5503","DWS DISTRIBUTORS, INC.","Chicago, IL"],["2686","EATON VANCE DISTRIBUTORS INC./CALVERT FUNDS","Boston, MA"],["5509","EATON VANCE DISTRIBUTORS, INC.",""],["0057","EDWARD D. JONES \u0026 CO.",""],["3505","ETC BROKERAGE SERVICES, LLC","Westlake, OH"],["5529","FEDERATED SECURITIES CORP.","Pittsburgh, PA"],["5581","FEF DISTRIBUTORS, LLC",""],["0202","FHN FINANCIAL SECURITIES CORP.","Memphis, TN"],["5894","FIDELITY DISTRIBUTORS COMPANY LLC","Boston, MA"],["0987","FIDUCIARY--SSB--DTC 0987",""],["2116","FIFTH THIRD BANK, NATIONAL ASSOCIATION","Cincinnati, OH"],["0728","FOLIO INVESTMENTS, INC.","Salt Lake City, UT"],["5807","FORESIDE DISTRIBUTION SERVICES, L.P./CAVANAL HILL FUNDS",""],["5916","FORESIDE DISTRIBUTION SERVICES, L.P./GEMINI INVESTMENT FUNDS PLC","Portland, ME"],["5814","FORESIDE DISTRIBUTION SERVICES, L.P./HSBC FUNDS",""],["5686","FORESIDE DISTRIBUTION SERVICES, L.P./VICTORY FUNDS",""],["6633","FORESIDE DISTRIBUTION SERVICES,LP/NORTHERN TRUST FUNDS",""],["4729","FORESIDE FINANCIAL SERVICES, LLC/DIAMOND HILL FUNDS","Portland, ME"],["6642","FORESIDE FINANCIAL SERVICES, LLC/DRIEHAUS MUTUAL FUNDS","Portland, ME"],["4940","FORESIDE FINANCIAL SERVICES, LLC/IMPAX FUNDS","Portland, ME"],["5979","FORESIDE FINANCIAL SERVICES, LLC/NEXPOINT FUNDS","Portland, ME"],["7979","FORESIDE FINANCIAL SERVICES, LLC/PERPETUAL AMERICAS FUNDS","Portland, ME"],["3208","FORESIDE FINANCIAL SERVICES, LLC/RIVER CANYON FUNDS","Portland, ME"],["6767","FORESIDE FUND SERVICES LLC/LIBERTY STREET FUNDS",""],["3104","FORESIDE FUND SERVICES LLC/MONTAGE MANAGERS TRUST","Portland, ME"],["4899","FORESIDE FUND SERVICES, LLC/ABERDEEN FUNDS",""],["5742","FORESIDE FUND SERVICES, LLC/AMERICAN BEACON FDS",""],["3539","FORESIDE FUND SERVICES, LLC/FORUM FUNDS","Portland, ME"],["5552","FORESIDE FUND SERVICES, LLC/HAWAIIAN TAX FREE TRUST","Portland, ME"],["4985","FORESIDE FUND SERVICES, LLC/INVESTMENT MANAGERS SERIES TRUST","Portland, ME"],["6546","FORESIDE FUND SERVICES, LLC/MAIRS AND POWER FUNDS TRUST","Portland, ME"],["7071","FORESIDE FUND SERVICES, LLC/POLEN CAPITAL INVESTMENT FUNDS PLC","Portland, ME"],["5672","FORESIDE FUND SERVICES, LLC/SA FUNDS","Portland, ME"],["3726","FORESIDE FUND SERVICES, LLC/SEQUOIA FUND","Portland, ME"],["5829","FORESIDE FUND SERVICES, LLC/THIRD AVENUE FUNDS",""],["4875","FORESIDE FUND SERVICES, LLC/WILSHIRE MUTUAL FUNDS","Portland, ME"],["5422","FORESIDE FUNDS DISTRIBUTORS LLC /CONSULTING GROUP CAPITAL MARKETS FUNDS","Portland, ME"],["5611","FORESIDE FUNDS DISTRIBUTORS LLC /FUNDVANTAGE TRUST","Portland, ME"],["5782","FORESIDE FUNDS DISTRIBUTORS LLC /GUIDESTONE FUNDS","Portland, ME"],["5724","FORESIDE FUNDS DISTRIBUTORS LLC /MATTHEWS INTERNATIONAL FUNDS DBA MATTHEWS ASIA FUNDS","Portland, ME"],["5648","FORESIDE FUNDS DISTRIBUTORS LLC /STERLING CAPITAL FUNDS","Portland, ME"],["5808","FORESIDE FUNDS DISTRIBUTORS LLC/BOSTON PARTNERS COLLECTIVE TRUST","Portland, ME"],["5749","FRANKLIN DISTRIBUTORS, LLC","San Mateo, CA"],["5505","FRANKLIN DISTRIBUTORS, LLC/PUTNAM RETAIL MANAGEMENT LIMITED PARTNERSHIP","San Mateo, CA"],["5534","FRANKLIN DISTRIBUTORS, LLC/5534","San Mateo, CA"],["5594","FRED ALGER \u0026 COMPANY, INCORPORATED","NEW YORK, NY"],["4272","FUTU CLEARING INC.","Dallas, TX"],["2139","GLENMEDE TRUST COMPANY, N.A. (THE)",""],["0005","GOLDMAN, SACHS \u0026 CO. LLC",""],["5572","GOLDMAN, SACHS \u0026 CO. LLC",""],["3018","GREEN PIER FINTECH LLC","Boston, MA"],["5471","HARBOR FUNDS DISTRIBUTORS, INC.",""],["4856","HARTFORD FUNDS DISTRIBUTORS, LLC","Wayne, PA"],["2152","HIDDEN ROAD PARTNERS CIV US LLC","New York, NY"],["0279","HILLTOP SECURITIES INC.","Dallas, TX"],["0430","HOLD BROTHERS CAPITAL LLC","New York, NY"],["0816","HSBC SECURITIES (USA) INC.",""],["1823","IFAST SECURITIES US CORPORATION","San Francisco, CA"],["0124","INGALLS \u0026 SNYDER, LLC","New York, NY"],["0067","INSTINET, LLC","New York, NY"],["0534","INTERACTIVE BROKERS LLC/RETAIL",""],["3036","INTERCHANGE CLEARING LLC","Vancouver, WA"],["5540","INVESCO DISTRIBUTORS, INC.",""],["0352","J.P. MORGAN SECURITIES LLC/JPMC","New York, NY"],["3051","JANE STREET CAPITAL, LLC/II","New York, NY"],["3492","JANE STREET EXECUTION SERVICES, LLC","New York, NY"],["0374","JANNEY MONTGOMERY SCOTT LLC",""],["5781","JANUS HENDERSON DISTRIBUTORS US LLC","Denver, CO"],["0019","JEFFERIES LLC",""],["5582","JOHN HANCOCK INVESTMENT MANAGEMENT DISTRIBUTORS LLC","Boston, MA"],["0902","JPMORGAN CHASE BANK, NATIONAL ASSOCIATION",""],["5599","JPMORGAN DISTRIBUTION SERVICES, INC.",""],["2205","KEYBANK NATIONAL ASSOCIATION",""],["4850","LAZARD ASSET MANAGEMENT SECURITIES LLC","New York, NY"],["5500","LORD ABBETT DISTRIBUTOR LLC",""],["8173","LORD ABBETT DISTRIBUTOR LLC/LORD ABBETT FLOATING RATE FUND LTD","Jersey City, NJ"],["1330","LORD ABBETT DISTRIBUTOR LLC/LORD ABBETT PASSPORT PORTFOLIOS PLC","Jersey City, NJ"],["0075","LPL FINANCIAL LLC","San Diego, CA"],["3652","LUCID CAPITAL MARKETS, LLC DBA AMERICAS EXECUTIONS","New York, NY"],["0990","MANUFACTURERS AND TRADERS TRUST COMPANY",""],["8873","MAREX CAPITAL MARKETS INC.","New York, NY"],["5954","MATRIX TRUST COMPANY","Denver, CO"],["0671","MERRILL LYNCH, PIERCE, FENNER \u0026 SMITH INCORPORATED","New York, NY"],["4987","MFD DISTRIBUTOR, LLC","Madison, WV"],["5516","MFS FUND DISTRIBUTORS, INC.",""],["8150","MID ATLANTIC TRUST COMPANY","Pittsburgh, PA"],["1043","MIRAE ASSET SECURITIES (USA) INC.","New York, NY"],["0050","MORGAN STANLEY \u0026 CO. LLC",""],["4970","MORGAN STANLEY \u0026 CO. LLC/ADVISOR FUNDS",""],["0015","MORGAN STANLEY SMITH BARNEY LLC",""],["0445","MURIEL SIEBERT \u0026 CO., LLC","Miami Beach, FL"],["1497","M1 FINANCE LLC","Chicago, IL"],["0226","NATIONAL FINANCIAL SERVICES LLC",""],["5542","NATIXIS DISTRIBUTION, LLC","Boston, MA"],["5810","NEUBERGER BERMAN MANAGEMENT LLC","New York, NY"],["0180","NOMURA SECURITIES INTERNATIONAL, INC.","Frankfurt"],["2669","NORTHERN TRUST COMPANY/DTC","Chicago, IL"],["5520","NUVEEN SECURITIES, LLC",""],["5539","NYLIFE DISTRIBUTORS LLC","Jersey City, NJ"],["4851","OAKMARK FUND",""],["0571","OPPENHEIMER \u0026 CO. INC.",""],["0443","PERSHING LLC",""],["8460","PHILLIP CAPITAL INC.","Chicago, IL"],["4991","PIMCO INVESTMENTS LLC","NEW YORK, NY"],["3075","PINNACLE INVESTMENTS, LLC","East Syracuse, NY"],["2616","PNC BANK, NATIONAL ASSOCIATION",""],["2835","PNC CAPITAL MARKETS LLC","Pittsburgh, PA"],["5836","PRINCIPAL SECURITIES, INC./PRINCIPAL FUNDS",""],["4969","PROFUNDS DISTRIBUTORS, INC.",""],["5805","PRUDENTIAL INVESTMENT MANAGEMENT SERVICES LLC",""],["3341","PUBLIC VENTURES, LLC DBA MDB CAPITAL","Addison, TX"],["6608","QUASAR DISTRIBUTORS LLC/ KINETICS MUTUAL FUNDS",""],["3074","QUASAR DISTRIBUTORS LLC/BLUEBAY FUNDS","Portland, ME"],["4981","QUASAR DISTRIBUTORS LLC/HARDING LOEVNER FDS INC",""],["6612","QUASAR DISTRIBUTORS, LLC/ AEGIS FUNDS","Portland, ME"],["3734","QUASAR DISTRIBUTORS, LLC/BROOKFIELD INVESTMENT FUNDS","Portland, ME"],["4931","QUASAR DISTRIBUTORS, LLC/BUFFALO FUNDS",""],["5353","QUASAR DISTRIBUTORS, LLC/DOUBLELINE FUNDS",""],["4984","QUASAR DISTRIBUTORS, LLC/HOTCHKIS \u0026 WILEY FUNDS",""],["3646","QUASAR DISTRIBUTORS, LLC/MUZINICH FUNDS","Portland, ME"],["6627","QUASAR DISTRIBUTORS, LLC/PERMANENT PORTFOLIO",""],["3771","QUASAR DISTRIBUTORS, LLC/SCHARF FUNDS","Portland, ME"],["6554","QUASAR DISTRIBUTORS, LLC/THE TORRAY FUNDS","Portland, ME"],["0725","RAYMOND JAMES \u0026 ASSOCIATES, INC.",""],["5179","RAYMOND JAMES \u0026 ASSOCIATES, INC./RAYMOND JAMES TRUST COMPANY","St Petersburg, FL"],["0235","RBC CAPITAL MARKETS, LLC",""],["5962","RELIANCE TRUST COMPANY","Atlanta, GA"],["7381","RELIANCE TRUST COMPANY/FIS GLOBAL PLUS","Atlanta, GA"],["8434","RELIANCE TRUST COMPANY/FIS TRUST DESK",""],["5409","RELIANCE TRUST COMPANY/FIS TRUSTDESK MKE","Milwaukee, WI"],["2042","RELIANCE TRUST COMPANY/SWMS1","Atlanta, GA"],["2085","RELIANCE TRUST COMPANY/SWMS2","Atlanta, GA"],["0547","ROBERT W. BAIRD \u0026 CO. INCORPORATED",""],["6769","ROBINHOOD SECURITIES, LLC","Lake Mary, FL"],["3350","ROYAL BANK OF CANADA, WFC BRANCH","New York, NY"],["5663","ROYCE FUND SERVICES, LLC","New York, NY"],["4305","RQD* CLEARING, LLC","New York, NY"],["8457","SAFRA SECURITIES LLC","New York, NY"],["0013","SANFORD C. BERNSTEIN \u0026 CO., LLC",""],["0096","SCOTIA CAPITAL (USA) INC.",""],["5763","SEI INVEST. DISTRI. CO./ADVISORS INNER CIRCLE FDS","Oaks, PA"],["5606","SEI INVESTMENTS DISTRI COMPANY/BISHOP STREET FUNDS","Oaks, PA"],["4913","SEI INVESTMENTS DISTRIBUTION CO./CAUSEWAY CAPITAL MANAGEMENT TRUST","Oaks, PA"],["3319","SEI INVESTMENTS DISTRIBUTION CO./GALLERY TRUST","Oaks, PA"],["8502","SEI INVESTMENTS DISTRIBUTION CO/CITY NATIONAL ROCHDALE SELECT STRATEGIES FUND","Oaks, PA"],["5343","SEI INVESTMENTS DISTRIBUTION CO/RIVERPARK FUNDS TRUST",""],["7026","SEI INVESTMENTS DISTRIBUTION CO/SEI GLOBAL FUNDS UCITS","OAKS, PA"],["3905","SEI INVESTMENTS DISTRIBUTION COMPANY/CITY NATIONAL ROCHDALE STRATEGIC CREDIT FUND","Oaks, PA"],["2039","SEI PRIVATE TRUST COMPANY","Oaks, PA"],["2663","SEI PRIVATE TRUST COMPANY/C/O GWP","Oaks, PA"],["0286","SG AMERICAS SECURITIES, LLC",""],["0608","SG AMERICAS SECURITIES, LLC/SUB 608","New York, NY"],["5779","SIA SECURITIES CORP.",""],["3939","SMBC NIKKO SECURITIES AMERICA, INC.","New York, NY"],["2319","SSB-TRUST CUSTODY-DTC #2319",""],["2966","STATE STREET BANK AND TRUST COMPANY/DTC 0997 BANK IN ACATS",""],["0793","STIFEL, NICOLAUS \u0026 COMPANY, INCORPORATED",""],["0750","STONEX FINANCIAL INC.","Kansas City, MO"],["5586","T. ROWE PRICE INVESTMENT SERVICES, INC.",""],["6563","TCW FUNDS DISTRIBUTORS","Los Angeles, CA"],["6644","TCW FUNDS DISTRIBUTORS/METROPOLITAN WEST FUNDS","Los Angeles, CA"],["3359","TCW FUNDS DISTRIBUTORS/TCW FUNDS (LUXEMBOURG)","Los Angeles, CA"],["0100","TD SECURITIES (USA) LLC","New York, NY"],["5668","TEACHERS ADVISORS LLC",""],["0901","THE BANK OF NEW YORK MELLON","New York, NY"],["8275","THE BANK OF NEW YORK MELLON/WEALTH MANAGEMENT","New York, NY"],["2305","THE HUNTINGTON NATIONAL BANK","Columbus, OH"],["5772","THE VANGUARD GROUP, INC.","Malvern, PA"],["5541","THORNBURG SECURITIES LLC","Sante Fe, NM"],["5711","TOUCHSTONE SECURITIES, INC.",""],["0148","TP ICAP GLOBAL MARKETS AMERICAS LLC","New York, NY"],["0271","TRADESTATION SECURITIES, INC.",""],["0287","TRADEUP SECURITIES, INC.","New York, NY"],["5580","TRANSAMERICA CAPITAL, LLC","Cedar Rapids, IA"],["6738","TRANSAMERICA CAPITAL, LLC/SERIES TRUST FUNDS",""],["0712","TZ CLEAR LLC","Dallas, TX"],["4919","U. S. BOSTON CAPITAL CORPORATION",""],["0280","U.S. BANCORP INVESTMENTS, INC.","Minneapolis, MN"],["2803","U.S. BANK N.A.","Minneapolis, MN"],["0221","UBS FINANCIAL SERVICES INC.",""],["0642","UBS SECURITIES LLC",""],["4878","ULTIMUS FUND DISTRIBUTORS, LLC/COMMONWEALTH INTERNATIONAL SERIES TRUST","Cincinnati, OH"],["3270","ULTIMUS FUND DISTRIBUTORS, LLC/FULLER \u0026 THALER","Cincinnati, OH"],["7069","ULTIMUS FUND DISTRIBUTORS, LLC/LYRICAL FUNDS","CINCINNATI, OH"],["3335","ULTIMUS FUND DISTRIBUTORS, LLC/THE CUTLER TRUST","CINCINNATI, OH"],["5853","ULTIMUS FUND DISTRIBUTORS, LLC/TRIBUTARY FUNDS","Cincinnati, OH"],["2450","UMB BANK, NATIONAL ASSOCIATION",""],["2067","UNION BANK \u0026 TRUST COMPANY NEBRASKA",""],["3150","UPRIGHT INVESTMENTS TRUST","East Hanover, NJ"],["0062","VANGUARD MARKETING CORPORATION",""],["4424","VELOCITY CAPITAL LLC/PROPRIETARY ACCOUNT","New York, NY"],["0294","VELOCITY CLEARING, LLC","Hazlet, NJ"],["3856","VELOX CLEARING LLC","Miami, FL"],["0595","VISION FINANCIAL MARKETS LLC","Stamford, CT"],["5734","VOYA INVESTMENTS DISTRIBUTOR, LLC",""],["5517","VP DISTRIBUTORS, LLC",""],["0709","WACHTEL \u0026 CO., INC.","Washington, DC"],["0103","WEDBUSH SECURITIES INC.",""],["8199","WEDBUSH SECURITIES INC./P3","Los Angeles, CA"],["2072","WELLS FARGO BANK, N.A./SIG",""],["2027","WELLS FARGO BANK, NATIONAL ASSOCIATION","Charlotte, NC"],["0141","WELLS FARGO CLEARING SERVICES, LLC","St Louis, MO"],["0250","WELLS FARGO SECURITIES, LLC",""],["2271","WESBANCO BANK, INC.","Wheeling, WV"],["5538","WILLIAM BLAIR \u0026 COMPANY, L.L.C.",""],["0283","WILSON-DAVIS \u0026 CO., INC.",""],["7350","WOLVERINE EXECUTION SERVICES, LLC","Chicago, IL"],["8082","ZIV INVESTMENT CO.",""]],"dtc":[["0005","GOLDMAN SACHS \u0026 CO. LLC"],["0010","BROWN BROTHERS HARRIMAN \u0026 CO."],["0013","SANFORD C. BERNSTEIN \u0026 CO., LLC"],["0015","MORGAN STANLEY SMITH BARNEY LLC"],["0017","INTERACTIVE BROKERS LLC"],["0019","JEFFERIES LLC"],["0031","NATIXIS SECURITIES AMERICAS LLC"],["0033","COMMERZ MARKETS LLC/FIXED INC. REPO \u0026 COMM. PAPER"],["0045","BMO CAPITAL MARKETS CORP."],["0046","PHILLIP CAPITAL INC./STOCK LOAN"],["0050","MORGAN STANLEY \u0026 CO. LLC"],["0052","AXOS CLEARING LLC"],["0057","EDWARD D. JONES \u0026 CO."],["0062","VANGUARD MARKETING CORPORATION"],["0063","VIRTU AMERICAS LLC/VIRTU FINANCIAL BD LLC"],["0065","ZIONS DIRECT, INC."],["0067","INSTINET, LLC"],["0075","LPL FINANCIAL LLC"],["0076","MUFG SECURITIES AMERICAS INC."],["0083","TRADEBOT SYSTEMS, INC."],["0096","SCOTIA CAPITAL (USA) INC."],["0100","TD SECURITIES (USA) LLC"],["0101","MORGAN STANLEY \u0026 CO. LLC/ SL CONDUIT"],["0103","WEDBUSH SECURITIES INC."],["0109","BROWN BROTHERS HARRIMAN \u0026 CO./ETF"],["0114","MACQUARIE CAPITAL (USA) INC."],["0124","INGALLS \u0026 SNYDER, LLC"],["0126","COMMERZ MARKETS LLC"],["0136","INTESA SANPAOLO IMI SECURITIES CORP."],["0141","WELLS FARGO CLEARING SERVICES LLC"],["0148","TP ICAP GLOBAL MARKETS AMERICAS LLC"],["0158","APEX CLEARING CORPORATION"],["0161","BOFA SECURITIES, INC."],["0163","NASDAQ TEXAS LLC"],["0164","CHARLES SCHWAB \u0026 CO., INC."],["0166","ARCOLA SECURITIES, INC."],["0180","NOMURA SECURITIES INTERNATIONAL, INC."],["0181","GUGGENHEIM SECURITIES, LLC"],["0187","J.P. MORGAN SECURITIES LLC"],["0189","STATE STREET GLOBAL MARKETS, LLC"],["0197","CANTOR FITZGERALD \u0026 CO. / CANTOR CLEARING SERVICES"],["0202","FHN FINANCIAL SECURITIES CORP."],["0221","UBS FINANCIAL SERVICES INC."],["0226","NATIONAL FINANCIAL SERVICES LLC"],["0229","BARCLAYS CAPITAL INC."],["0235","RBC CAPITAL MARKETS, LLC"],["0237","NASDAQ PHLX LLC"],["0250","WELLS FARGO SECURITIES, LLC"],["0270","ING FINANCIAL MARKETS LLC"],["0271","TRADESTATION SECURITIES, INC."],["0274","CITIGROUP GLOBAL MARKETS INC./SALOMON BROTHERS"],["0279","HILLTOP SECURITIES INC."],["0280","U.S. BANCORP INVESTMENTS, INC."],["0283","WILSON-DAVIS \u0026 CO., INC."],["0286","SG AMERICAS SECURITIES, LLC"],["0287","TRADEUP SECURITIES, INC."],["0294","VELOCITY CLEARING, LLC"],["0295","VIRTU AMERICAS LLC"],["0349","ABN AMRO SECURITIES (USA) LLC"],["0352","J.P. MORGAN SECURITIES LLC/JPMC"],["0361","D. A. DAVIDSON \u0026 CO."],["0369","HRT FINANCIAL LP"],["0370","TRADITION SECURITIES AND DERIVATIVES LLC"],["0374","JANNEY MONTGOMERY SCOTT LLC"],["0390","RAYMOND JAMES \u0026 ASSOCIATES, INC/FI"],["0395","CITADEL CLEARING LLC"],["0413","SANTANDER US CAPITAL MARKETS LLC"],["0430","HOLD BROTHERS CAPITAL LLC"],["0436","ARCHIPELAGO SECURITIES, L.L.C."],["0438","CIBC WORLD MARKETS CORP."],["0443","PERSHING LLC"],["0445","MURIEL SIEBERT \u0026 CO., LLC"],["0448","NUVEEN SECURITIES, LLC"],["0486","HSBC SECURITIES (USA) INC. (FIXED INCOME)"],["0505","CITIGROUP GLOBAL MARKETS INC."],["0520","NASDAQ EXECUTION SERVICES LLC/OPTIONS"],["0526","GUGGENHEIM FUNDS DISTRIBUTORS, LLC"],["0534","INTERACTIVE BROKERS LLC/RETAIL"],["0536","JEFFERIES LLC/JEFFERIES EXECUTION SERVICES, INC./SERVICE BUREAU"],["0537","BGC FINANCIAL, L.P."],["0547","ROBERT W. BAIRD \u0026 CO. INCORPORATED"],["0551","BOFA SECURITIES INC./BOFAS PRIME BROKER"],["0557","KEYBANK SAFEKEEPING"],["0568","NASDAQ EXECUTION SERVICES, LLC"],["0571","OPPENHEIMER \u0026 CO. INC."],["0573","DEUTSCHE BANK SECURITIES INC."],["0587","SOUTH STATE BANK, NATIONAL ASSOCIATION"],["0594","RJ DEALER STOCK LOAN"],["0595","VISION FINANCIAL MARKETS LLC"],["0608","SG AMERICAS SECURITIES LLC/SUB 608"],["0624","TP ICAP GLOBAL MARKETS AMERICAS LLC/TULLETT"],["0627","DASH FINANCIAL TECHNOLOGIES LLC"],["0630","BNP PARIBAS SECURITIES CORP."],["0642","UBS SECURITIES LLC"],["0647","DAIWA CAPITAL MARKETS AMERICA INC."],["0651","CREDIT AGRICOLE SECURITIES (USA) INC"],["0652","UBS SECURITIES LLC/CMO"],["0671","MERRILL LYNCH, PIERCE, FENNER \u0026 SMITH INCORPORATED"],["0692","INVESCO CAPITAL MARKETS, INC."],["0695","ABN AMRO CLEARING USA LLC"],["0696","CANTOR FITZGERALD \u0026 CO."],["0701","CETERA INVESTMENT SERVICES LLC"],["0709","WACHTEL \u0026 CO., INC."],["0712","TZ CLEAR LLC"],["0725","RAYMOND JAMES \u0026 ASSOCIATES, INC."],["0728","FOLIO INVESTMENTS, INC."],["0734","THE NASDAQ STOCK MARKET LLC"],["0750","STONEX FINANCIAL INC."],["0756","AMERICAN ENTERPRISE INVESTMENT SERVICES INC."],["0759","NASDAQ STOCK MARKET LLC/OMNIBUS ACCOUNT"],["0771","WILLIAM BLAIR \u0026 COMPANY, L.L.C."],["0773","BOFA SECURITIES, INC. / FIXED INCOME"],["0793","STIFEL, NICOLAUS \u0026 COMPANY, INCORPORATED"],["0794","CF SECURED, LLC"],["0816","HSBC SECURITIES (USA) INC."],["0892","MIZUHO SECURITIES USA LLC"],["0901","THE BANK OF NEW YORK MELLON"],["0902","JPMORGAN CHASE BANK, NATIONAL ASSOCIATION"],["0908","CITIBANK, N.A."],["0912","OCC INTERNAL NON-PROPRIETARY CROSS MARGIN CFTC 1.20 FUTURES CUSTOMER"],["0923","JPMORGAN CHASE BANK - ADR"],["0933","TD SECURITIES (USA) LLC/FULLY PAID FOR LENDING"],["0939","OCC CFTC 1.20 FUTURES CUSTOMER SEGREGATED MARGIN OMNIBUS ACCOUNT"],["0950","CITIBANK, N.A. - DEALER"],["0953","ADR-CITI"],["0954","THE BANK OF NEW YORK MELLON/MELLON TRUST OF NEW ENGLAND, NATIONAL"],["0955","BANK OF AMERICA, NA/GWIM TRUST OPERATIONS"],["0958","DESERET TRUST COMPANY"],["0963","BNYMELLON/RE ETF - UIT DTC/NSCC 0963"],["0979","UBS AG, STAMFORD BRANCH"],["0981","OPTIONS CLEARING CORPORATION (THE)"],["0982","THE OPTIONS CLEARING CORPORATION/OCC MARKET LOAN PROGRAM ACCOUNT - AQS"],["0987","FIDUCIARY SSB"],["0990","MANUFACTURERS AND TRADERS TRUST COMPANY"],["0992","BMO BANK NA/TRUST"],["0997","STATE STREET BANK AND TRUST COMPANY"],["1014","BNP PARIBAS, NEW YORK BRANCH/BNP PARIBAS LONDON ALM"],["1030","PERSHING LLC/CLIENT FINANCING"],["1043","MIRAE ASSET SECURITIES (USA), INC."],["1082","BNP PARIBAS SECURITIES CORP./CUSTOMER CLEARED SWAP ACCOUNT (R37 CME)"],["1094","BNP PARIBAS, NEW YORK BRANCH/INDEVAL"],["1099","J. P. MORGAN SECURITIES LLC/J.P. MORGAN MARKETS LTD"],["1105","J.P. MORGAN SECURITIES LLC/J.P. MORGAN DUBLIN PLC"],["1118","JPMORGAN CHASE BANK, N.A./J.P. MORGAN SE, FRANKFURT"],["1120","JPMORGAN CHASE BANK, N.A./JPMORGAN CHASE BANK NA LONDON"],["1121","MANUFACTURERS AND TRADERS TRUST COMPANY/COMMERCIAL LOANS"],["1133","JPMORGAN CHASE BANK, N.A./J.P. MORGAN SECURITIES PLC"],["1167","CITIBANK, N.A./MUTB-NY"],["1186","AXOS CLEARING LLC/CORRESPONDENT FLIP FACILITATION ACCOUNT"],["1206","VANGUARD MARKETING CORPORATION/FPL"],["1241","LUCID CAPITAL MARKETS, LLC DBA AMERICAS EXECUTIONS/SEC LENDING"],["1326","THE BANK OF NEW YORK MELLON/VAL DE SHAW \u0026 CO"],["1332","THE BANK OF NEW YORK MELLON/CITADEL CDGE"],["1335","THE BANK OF NEW YORK MELLON/CITADEL CSGI"],["1340","THE BANK OF NEW YORK MELLON/CITADEL GFL2"],["1342","THE BANK OF NEW YORK MELLON/SMBC BANK"],["1358","THE BANK OF NEW YORK MELLON/MARKETS"],["1369","THE BANK OF NEW YORK MELLON/MILLENNIUM ICS OPPORTUNITIES, LTD."],["1374","THE BANK OF NEW YORK MELLON/MILLENNIUM RIVERVIEW GROUP LLC"],["1379","THE BANK OF NEW YORK MELLON/MILLENNIUM INTEGRATED ASSETS II LLC"],["1380","THE BANK OF NEW YORK MELLON/MILLENNIUM ICS OPPORTUNITIES II LLC"],["1385","MIRAE ASSET SECURITIES (USA) INC./STOCK LOAN CONDUIT ACCOUNT"],["1386","RQD* CLEARING, LLC/STOCK LOAN"],["1389","AVIOR CAPITAL MARKETS US LLC"],["1405","BNP PARIBAS, NEW YORK BRANCH/MERLION/CLIENT ASSETS"],["1414","BNYMELLON/SCB"],["1416","BNYMELLON/SHINHAN SECURITIES CO."],["1419","BNYMELLON/RE NAB MELBOURNE"],["1420","BNYMELLON/ CACEIS BANK KEPLER"],["1421","BNYMELLON/ELLINGTON EMPIRE FUND LLC"],["1426","THE BANK OF NEW YORK MELLON/FIDELITY"],["1430","INGALLS \u0026 SNYDER LLC/SECURITIES LENDING"],["1448","THE BANK OF NEW YORK MELLON/RBC"],["1458","THE BANK OF NEW YORK MELLON/DEUTSCHE BANK"],["1462","THE BANK OF NEW YORK MELLON/MILLENIUM INTEGRATED ASSETS, LTD."],["1466","THE BANK OF NEW YORK MELLON/VAL 2 DE SHAW \u0026 CO"],["1468","THE BANK OF NEW YORK MELLON/GALVANIC DE SHAW \u0026 CO"],["1476","ADELPHI STOCK BROKERS INC."],["1477","THE BANK OF NEW YORK MELLON/ACCOUNT 21"],["1497","M1 FINANCE LLC"],["1501","CITIBANK/CP/IPA"],["1503","DEUTSCHE BANK TRUST COMPANY AMERICAS"],["1510","U.S. BANK N.A./CP"],["1515","PNC BANK, N.A./IPA"],["1518","TRUIST BANK/CT CF IPA"],["1526","STATE STREET BANK AND TRUST COMPANY/IPA"],["1529","THE BANK OF NEW YORK MELLON/LM"],["1532","THE BANK OF NEW YORK MELLON/ACCOUNT 38"],["1538","COMPUTERSHARE TRUST COMPANY, N.A./IPA"],["1540","UBS AG, STAMFORD BRANCH/IPA ACCOUNT"],["1541","THE BANK OF NEW YORK MELLON/IPA"],["1542","BANK OF NOVA SCOTIA, NEW YORK AGENCY/IPA (THE)"],["1544","HSBC BANK USA, NATIONAL ASSOCIATION/IPA"],["1545","MANUFACTURERS AND TRADERS TRUST COMPANY/IPA"],["1546","SOCIETE GENERALE, NEW YORK BRANCH"],["1552","THE BANK OF NEW YORK MELLON/CROMWELL"],["1560","NORTHERN TRUST COMPANY/IPA"],["1562","HUNTINGTON NATIONAL BANK/IPA"],["1569","BNP PARIBAS, NEW YORK BRANCH"],["1571","REGIONS BANK/IPA"],["1577","MIZUHO BANK LTD. NEW YORK BRANCH/IPA"],["1582","BMO BANK NA/IPA"],["1584","TEXAS TREASURY SAFEKEEPING TRUST COMPANY/IPA"],["1586","ZIONS BANCORPORATION, NATIONAL ASSOCIATION/CT ISSUE \u0026 PAY A/C/IPA"],["1595","THE BANK OF NEW YORK MELLON/AS1"],["1601","BNP PARIBAS, NEW YORK BRANCH/IPA"],["1605","VELOX CLEARING LLC/SECURITIES LENDING"],["1610","THE BANK OF NEW YORK MELLON/AS2"],["1620","ASSOCIATED BANK, N.A./ASSOCIATED TRUST COMPANY/IPA"],["1687","THE BANK OF NEW YORK MELLON/ACCOUNT 39"],["1698","THE BANK OF NEW YORK MELLON/ACCOUNT 25"],["1699","THE BANK OF NEW YORK MELLON/ACCOUNT 26"],["1707","THE BANK OF NEW YORK MELLON/ACCOUNT 27"],["1716","THE BANK OF NEW YORK MELLON/ACCOUNT 28"],["1720","THE BANK OF NEW YORK MELLON/ACCOUNT 29"],["1722","THE BANK OF NEW YORK MELLON/RE FIRM INVESTMENT/ACCOUNT 110"],["1724","BNYMELLON/RE CITADEL GLOBAL FIXED INCOME MASTER FUND"],["1726","THE BANK OF NEW YORK MELLON/ACCOUNT 31"],["1730","MIZUHO SECURITIES USA LLC/MIZUHO BANK LTD. NEW YORK BRANCH"],["1749","REGIONS BANK/CORPORATE TRUST OPS/IPA"],["1762","FANNIE MAE/NON-FED SECURITIES"],["1767","MILLENNIUM ADVISORS, LLC"],["1821","MORGAN STANLEY \u0026 CO. LLC/OTC DERIVATIVE MARGIN COLLATERAL"],["1823","IFAST SECURITIES US CORPORATION"],["1853","MURIEL SIEBERT \u0026 CO., LLC/RISE FINANCIAL SERVICES"],["1856","BROADRIDGE BUSINESS PROCESS OUTSOURCING, LLC"],["1867","TZ CLEAR LLC/CONDUIT"],["1898","FORTIS BANK"],["1926","THE NORTHERN TRUST COMPANY/ETF"],["1944","STONEX FINANCIAL INC./BD RATES"],["1951","BNYMELLON/RE ELLINGTON QUANT MACRO MSTR FD LTD"],["1959","BNYMELLON/RE CACEIS BANK, NETHERLANDS"],["1961","BNYMELLON/RE ELLINGTON SYSTEMATIC CR MSTR FD LTD"],["1970","EUROCLEAR BANK SA/NV"],["1982","MITSUBISHI UFJ TRUST AND BANKING CORPORATION, NEW YORK BRANCH/"],["2000","CLEARSTREAM EUROPE AG"],["2002","BNYMELLON/RE BGC BROKERS LP"],["2003","UBS AG, STAMFORD BRANCH/AC PB CLIENTS-NO UBS LIEN"],["2008","MONTE TITOLI - S.P.A."],["2012","CREST INTERNATIONAL NOMINEES LIMITED"],["2015","THE TEL-AVIV STOCK EXCHANGE CLEARING HOUSE LTD"],["2023","THE BANK OF NEW YORK MELLON/FMSBONDS, INC."],["2026","BNYMELLON/RE BNYMSANV RE FIRM"],["2027","WELLS FARGO BANK, NATIONAL ASSOCIATION"],["2032","CITIBANK/THE CITIGROUP PRIVATE BANK/TRUST"],["2037","MITSUBISHI UFJ TRUST \u0026 BANKING CORPORATION, NEW YORK BRANCH/AFFILIATE"],["2039","SEI PRIVATE TRUST COMPANY"],["2041","DBTC AMERICAS/CTAG/PUTS \u0026 DEMANDS"],["2042","RELIANCE TRUST COMPANY/SWMS1"],["2046","THE BANK OF NEW YORK MELLON/HBK MASTER FUND LP"],["2047","SECURITIES FINANCE TRUST COMPANY"],["2053","FROST BANK"],["2065","PNC BANK, N.A./OTTA"],["2067","UNION BANK \u0026 TRUST COMPANY"],["2068","FEDERAL HOME LOAN MORTGAGE CORPORATION/RETAINED"],["2070","BNYMELLON/RE BNP PARIBAS TRI-PARTY ACCOUNT"],["2072","WELLS FARGO BANK, N.A./SIG"],["2074","BNYMELLON/RE BNYMSANVAMS RE FIRM LAB"],["2085","RELIANCE TRUST COMPANY/SWMS2"],["2091","BNYMELLON/RE RABOBANK INTERNATIONAL UNEF"],["2093","BNYMELLON/RE SUNTRUST BANK"],["2095","TRUIST SECURITIES, INC."],["2100","BNYMELLON/RE SUNTRUST BANK PORTFOLIO"],["2103","BNYMELLON/RE BARCLAYS CAPITAL SECURITIES LTD."],["2104","ZIONS BANCORPORATION, NATIONAL ASSOCIATION"],["2106","BNYMELLON/RE ALLSTATE MARK TO MARKETS"],["2107","THE BANK OF NEW YORK MELLON/COMMERCIAL LOANS"],["2108","COMERICA BANK"],["2109","BNYMELLON/RE ICBC STANDARD BANK PLC"],["2114","TRUIST BANK/SUNTRUST BANK RETAIL"],["2116","FIFTH THIRD BANK, NATIONAL ASSOCIATION"],["2118","DESERET TRUST COMPANY - D"],["2126","FIDUCIARY TRUST COMPANY"],["2131","BNYMELLON/RE NOMURA PB NOMINEES LTD"],["2136","THE BANK OF NEW YORK MELLON/IVORS"],["2138","THE BANK OF NEW YORK MELLON/ELLINGTON SPECIAL OPPORTUNITIES FUND, LTD."],["2139","GLENMEDE TRUST COMPANY, N.A. (THE)"],["2142","BREAN CAPITAL, LLC"],["2147","BNP PARIBAS, NEW YORK BRANCH/BNP PARIBAS PRIME BROKERAGE CUSTODIAN"],["2151","BNYMELLON/RE FIRM INVESTMENT ACCOUNT"],["2152","HIDDEN ROAD PARTNERS CIV US LLC"],["2154","BNP PARIBAS SECURITIES CORP./PRIME BROKERAGE"],["2155","THE BANK OF NEW YORK MELLON/DEUTSCHE BANK LONDON AG LONDON/GLOBAL"],["2161","MIZUHO SECURITIES USA LLC/SECURITIES FINANCE"],["2164","JPMORGAN CHASE BANK/CORRESPONDENCE CLEARING SERVICES 2"],["2165","HSBC BANK USA, NATIONAL ASSOCIATION"],["2166","PNC BANK/PNC MUNICIPAL STRATEGY - BLK"],["2167","PNC BANK, N.A./PNC CAPITAL MARKETS LLC MSFTA"],["2169","BNYMELLON/RE DE SHAW US BMCAE CUSTOM FUND II"],["2170","COMMERCE BANK"],["2176","THE BANK OF NEW YORK MELLON/CDC MORTGAGE CAPITAL INC."],["2187","MORGAN STANLEY BANK, N.A."],["2193","SSB-PHYSICAL CUSTODY SERVICES"],["2196","THE BANK OF NEW YORK MELLON/BARCLAYS BANK PLC"],["2205","KEYBANK NATIONAL ASSOCIATION"],["2207","BNYMELLON/RE RABOBANK INTERNATIONAL LONDON EQUITY FINANCE"],["2209","BNYMELLON/RE MIDCAP SPDRS"],["2220","THE BANK OF NEW YORK MELLON/EF SECURITIES LLC"],["2224","THE BANK OF NEW YORK MELLON/NATIXIS FINANCIAL PRODUCTS INC"],["2234","U.S. BANK N.A./SAFEKEEPING WEST"],["2236","BANK OF AMERICA, NATIONAL ASSOCIATION"],["2243","BNYMELLON/RE NATIXIS FIXED INCOME"],["2244","BNYMELLON/RE NATIXIS"],["2251","BANK OF AMERICA NA/CLIENT ASSETS"],["2257","ASSOCIATED BANK, N.A."],["2262","TRUIST BANK/SUNTRUST BANK DEALER"],["2267","MORGAN STANLEY PRIVATE BANK, NATIONAL ASSOCIATION"],["2271","WESBANCO BANK, INC."],["2281","BNY MELLON/NOMURA INT\u0027L PLC REPO"],["2304","THE BANK OF NEW YORK MELLON/ICAP SECURITIES LTD"],["2305","THE HUNTINGTON NATIONAL BANK"],["2306","FANNIE MAE"],["2307","BNYMELLON/RE ING BANK NV LONDON BRANCH"],["2308","BNYMELLON/RE BOA NA"],["2309","BANK OF MONTREAL, CHICAGO BRANCH"],["2310","THE BANK OF NEW YORK MELLON/STONEX LTD"],["2312","JPMORGAN CHASE BANK NA/DBTC AMERICAS/DEUTSCHE BANK AG (LONDON BRANCH)"],["2314","JPMORGAN CHASE BANK NA/DBTC AMERICAS/DB UK BANK LIMITED"],["2319","SSB - TRUST CUSTODY"],["2322","BNP PARIBAS, NEW YORK BRANCH/BNPP SA"],["2324","BNYMELLON/RE BARCLAYS BANK PLC - PLEDGE ACCOUNT"],["2327","THE BANK OF NEW YORK MELLON/CAPSTONE GLOBAL MASTER (CAYMAN) LIMITED"],["2330","COMPUTERSHARE TRUST COMPANY, N.A./OPTIONS"],["2333","CITIBANK, N.A./ETF"],["2334","JPMORGAN CHASE-ADR MAX"],["2336","BNYMELLON/RE CHARLES STANLEY AND COMPANY, LIMITED"],["2338","HONG KONG SECURITIES CLEARING COMPANY LIMITED"],["2339","BNYMELLON/RE ITC - DEALERS CLEARANCE SPECIAL"],["2341","THE BANK OF NEW YORK MELLON/ACCOUNT 35"],["2342","THE BANK OF NEW YORK MELLON/ELLINGTON MORTGAGE FUND SC, LTD."],["2347","THE BANK OF NOVA SCOTIA, NEW YORK AGENCY"],["2348","THE BANK OF NEW YORK MELLON/PERSHING SECURITIES LIMITED"],["2352","AMALGAMATED BANK"],["2357","JPMORGAN CHASE BANK/IA"],["2359","BNYMELLON/RE HSBC BANK PLC PARIS BRANCH"],["2362","THE BANK OF NEW YORK MELLON/CRESCENT II FUND L.P."],["2363","BNYMELLON/RE HSBC BANK PLC EQD USBR"],["2366","BNYMELLON/RE BARCLAYS CAP SEC LTD PB SEG 1"],["2367","BNYMELLON/RE BARCLAYS CAP SEC LTD PB SEG 2"],["2368","THE BANK OF NEW YORK MELLON/DANSKE BANK A/S"],["2375","STATE STREET BANK \u0026 TRUST COMPANY / ISHARES EUROPE"],["2379","JPMORGAN CHASE BANK/JPMORGAN PPB"],["2381","BNYMELLON/RE FIRM TRADE INS"],["2382","MANUFACTURERS AND TRADERS TRUST COMPANY/BANK PORTFOLIO"],["2386","STATE STREET BANK AND TRUST COMPANY, N.A."],["2391","FEDERAL HOME LOAN MORTGAGE CORPORATION"],["2393","HSBC BANK USA, NATIONAL ASSOCIATION/OMNIBUS"],["2396","MIZUHO SECURITIES USA LLC/FIXED INCOME"],["2399","STATE STREET BANK AND TRUST COMPANY/DEUTSCHE BANK FRANKFURT"],["2402","DRIVEWEALTH, LLC"],["2415","COMPUTERSHARE TRUST COMPANY, N.A."],["2416","FIFTH THIRD BANK, NATIONAL ASSOCIATION/STATE TEACHERS RETIREMENT OF"],["2417","THE BANK OF NEW YORK MELLON/ELLINGTON MORTGAGE OPPORTUNITIES MASTER"],["2424","JPMORGAN CHASE BANK, N.A./CUSTODIAL TRUST COMPANY"],["2425","HOME FEDERAL BANK OF TENNESSEE, F.S.B."],["2426","CITIBANK, N.A./CORPORATE AGENCY \u0026 TRUST"],["2427","THE BANK OF NEW YORK MELLON / BOFA SECURITIES INC"],["2433","JPMORGAN CHASE BANK/VANGUARD LOANET"],["2434","JPMORGAN CHASE BANK/GNPH MIDDLE MARKET"],["2436","SSB - BANK PORTFOLIO"],["2438","THE BANK OF NEW YORK MELLON TRUST COMPANY, NATIONAL ASSOCIATION"],["2442","THE BANK OF NEW YORK MELLON/CITADEL CMSV"],["2443","BNYMELLON/RE CACEIS BANK GERMANY RE ORCA"],["2444","THE BANK OF NEW YORK MELLON/FSA"],["2445","FIRST HORIZON BANK"],["2447","HOME FEDERAL BANK/HOME FINANCIAL SERVICES, INC."],["2450","UMB BANK, NATIONAL ASSOCIATION"],["2451","UMB BANK, INVESTMENT DIVISION"],["2459","AVIOR CAPITAL MARKETS US LLC/AVIOR SA"],["2462","BNYMELLON/RE HSBC BANK PLC"],["2469","THE BANK OF NEW YORK MELLON/MIZUHO BANK LTD."],["2472","BNYMELLON/RE DR CUSTODY ACCOUNT"],["2474","BNYMELLON/RE MILLENNIUM PARTNERS"],["2475","THE BANK OF NEW YORK MELLON/ANNALY COMMERCIAL REAL ESTATE GR."],["2477","AVIOR CAPITAL MARKETS US LLC/AVIOR UK"],["2479","THE BANK OF NEW YORK MELLON/DBAG FRANKFURT GLOBAL MARKET"],["2480","WELLS FARGO SECURITIES, LLC/SECURITIES FINANCE"],["2481","DEUTSCHE BANK AG, NEW YORK BRANCH"],["2483","PNC BANK, N.A./SAFEKEEPING"],["2485","THE BANK OF NEW YORK MELLON/DBAG LONDON GLOBAL MARKET"],["2486","BNYMELLON/RE RABOBANK UTRECHT FIXED INCOME"],["2490","BNYMELLON/RE RABOBANK INT\u0027L UTRECHT EQUITY FIN"],["2491","TD SECURITIES (USA) LLC/TD BANK"],["2494","BNYMELLON/RE BOA SECURITIES LTD. (BASL)"],["2497","DESERET TRUST COMPANY - I"],["2499","BNYMELLON/RE NOMURA CL SETT NOM LTD"],["2502","THE BANK OF NEW YORK MELLON/ANNALY MORTGAGE"],["2504","BNYMELLON/RE DEPOSITARY RECEIPT SERVICES/MERRILL LYNCH REDEM."],["2507","UBS AG STAMFORD BRANCH/AS CUSTODIAN FOR UBS AG LONDON BRANCH"],["2510","BNYMELLON/RE THE PRUDENTIAL INVESTMENT"],["2517","JPMORGAN CHASE BANK/PRUDENTIAL"],["2522","MORGAN STANLEY PRIVATE BANK, NATIONAL ASSOCIATION/#2"],["2523","BNY MELLON CAPITAL MARKETS, LLC"],["2531","THE BANK OF NOVA SCOTIA, NEW YORK AGENCY/RATES DESK"],["2533","HOME FEDERAL BANK/HF PORTFOLIO"],["2534","HOME FEDERAL BANK OF TENNESSEE, FSB/TRUST DEPARTMENT CUSTOMERS"],["2539","MIZUHO BANK, LTD. NEW YORK BRANCH"],["2545","LAKESIDE BANK"],["2546","STATE STREET BANK AND TRUST COMPANY/DB RESIDUAL PROCESSING ACCOUNT"],["2553","BNYMELLON/RE DAVY SECURITIES LIMITED"],["2555","BANK OF CHINA, NEW YORK BRANCH"],["2557","BANKERS\u0027 BANK"],["2559","BMO BANK NA/DEALER"],["2562","CITIBANK NA/DEALER SAFEKEEPING"],["2563","ASCENSUS TRUST COMPANY"],["2565","THE BANK OF NEW YORK MELLON/BAKERGROUP"],["2567","AMALGAMATED BANK OF CHICAGO"],["2568","TD SECURITIES (USA) LLC/ FIXED INCOME"],["2570","MITSUBISHI UFJ TRUST \u0026 BANKING CORPORATION, NEW YORK BRANCH/STOCK LOAN"],["2573","BNYMELLON/RE RABOBANK INTERNATIONAL NY"],["2580","U.S. BANK N.A./ETF"],["2586","COMPUTERSHARE TRUST COMPANY, N.A./DRP"],["2590","BNYMELLON/RE BANCO SANTANDER SA LONDON BRANCH"],["2595","BNYMELLON/RE FIRM INVESTMENT PORTFOLIO"],["2598","BNYMELLON/RE CACEIS BANK GERMANY RE HVB MIB"],["2601","BNYMELLON/RE TRADITION LONDON CLEARING LTD."],["2602","NORTHERN TRUST COMPANY/UNITED NATIONS JOINT STAFF PENSION FUND"],["2609","JPMORGAN CHASE BANK/TREASURER OF STATE OF OHIO BWC"],["2612","JPMORGAN CHASE/US EQ TRP"],["2616","PNC BANK, NATIONAL ASSOCIATION"],["2621","BNYMELLON/RE MIZUHO INTERNATIONAL"],["2622","TEXAS TREASURY SAFEKEEPING TRUST COMPANY"],["2625","SSB\u0026T/SEC FIN AS PRINCIPAL"],["2630","BNYMELLON/RE AIG"],["2634","BNYMELLON/RE GOV \u0026 CO BANK OF ENGLAND"],["2641","BNYMELLON/RE BARCLAYS CAPITAL INC."],["2648","BNYMELLON/RE GLOBAL PRIME PARTNERS"],["2654","M1 FINANCE LLC/STOCK LOAN"],["2655","DBTC AMERICAS/CTAG-GES"],["2656","BANK OF CHINA NEW YORK BRANCH/CLIENT CUSTODY"],["2658","CITIBANK, N.A./SEGREGATED LENDING"],["2660","GOLDMAN SACHS BANK USA/GOLDMAN SACHS AGENCY LENDING"],["2663","SEI PRIVATE TRUST COMPANY/C/O GWP"],["2668","JPMORGAN CHASE BANK,N.A./JPMORGAN CHASE FUNDING INC."],["2669","THE NORTHERN TRUST COMPANY"],["2678","SSB\u0026T CO/CLIENT CUSTODY SERVICES"],["2679","TD SECURITIES (USA) LLC/ TDB UNENCUMBERED"],["2680","SOCIETE GENERALE NY/SOCIETE GENERALE PARIS"],["2681","THE BANK OF NEW YORK MELLON/ITC-DEALERS CLEARANCE GENERAL"],["2683","TD SECURITIES (USA) LLC/TD NY"],["2684","NORTHERN TRUST COMPANY - SAFEKEEPING"],["2687","CALDWELL TRUST COMPANY"],["2690","DEUTSCHE BANK AG NY/US CUSTODY"],["2697","BMO BANK NATIONAL ASSOCIATION"],["2703","TRUIST BANK/IP TRUIST FINANCIAL CORP"],["2705","TRUIST BANK/IP TRUIST BANK"],["2709","BNYMELLON/RE DE SHAW \u0026 CO."],["2711","BNYMELLON/RE ICAP LONDON"],["2714","BNYMELLON/RE NATIONAL BANK OF AUSTRALIA"],["2716","BNYMELLON/RE D.E. SHAW KALON PORTFOLIOS, L.L.C"],["2720","BNYMELLON/RE BARCLAYS BK PLC-BARC LUX SARL A/C 1"],["2721","BNYMELLON/RE BARCLAYS BK PLC-BARC LUX SARL A/C 2"],["2731","BNYMELLON/RE SCULPTOR CAPITAL MANAGEMENT"],["2736","ZIONS BANCORPORATION, N.A./TRUST"],["2738","MIZUHO SECURITIES USA LLC/MIZUHO MARKETS CAYMAN FIXED INCOME"],["2767","SSB - BLACKROCK INSTITUTIONAL TRUST"],["2769","KEYBANK NA/FBO TREASURER OF STATE OF OHIO"],["2773","JPMORGAN CHASE BANK/MUNICIPAL DEALER"],["2776","THE BANK OF NEW YORK MELLON/ELLINGTON CREDIT OPPORTUNITIES LTD."],["2778","NORTHERN TRUST COMPANY/FUTURE FUND ACCOUNTS"],["2779","SUMITOMO MITSUI TRUST BANK (U.S.A.) LIMITED"],["2781","U.S. BANK, N.A./U.S. BANK MUNICIPAL SECURITIES GROUP"],["2784","THE BANK OF NEW YORK MELLON/ST. BERNARD OPPORTUNITY FUND 1, LTD."],["2785","BNYMELLON/RE MILLENNIUM FIXED INCOME LTD"],["2786","BBVA SECURITIES INC."],["2787","BNP PARIBAS, NEW YORK BRANCH/CUSTODY/CLIENT ASSETS"],["2790","CITIBANK, N.A. BOOK-ENTRY-ONLY MEDIUM TERM NOTE ACCOUNT"],["2793","JUMP TRADING LLC"],["2802","BNYMELLON/RE BBPLC PB CAYMEN CLIENT"],["2803","U.S. BANK N.A."],["2808","DBTC AMERICAS/CTAG-CDFP"],["2820","JANE STREET EXECUTION SERVICES, LLC/II"],["2821","THE BANK OF NEW YORK MELLON/CITADEL CCSV"],["2825","BNYMELLON/RE BBPLC PB CANADIAN CLIENTS"],["2828","THE BANK OF NEW YORK MELLON/DEUTSCHE BANK AG"],["2830","BNYMELLON/RE HSBC BANK PLC"],["2833","BNYMELLON/DE SHAW US L CAP C ALP EX PORT LLC"],["2834","PNC BANK, N.A./PITTSBURGH"],["2835","PNC CAPITAL MARKETS LLC"],["2837","U.S. BANK N.A./THIRD PARTY LENDING"],["2838","BNYMELLON/RE SMBC NIKKO SECURITIES AMERICA INC"],["2841","THE BANK OF NEW YORK MELLON/EF MORTGAGE, LLC"],["2842","THE BANK OF NEW YORK MELLON/EF CMO, LLC"],["2843","BNYMELLON/RE SMBC NIKKO CAPITAL MARKETS LTD"],["2844","BNYMELLON/RE BBPLC PB UK CLIENTS"],["2845","JPMORGAN CHASE BANK, N.A./ABCP CONDUITS"],["2846","BNYMELLON/RE (AG) DESHAW OCULUS PORT LLC.PLGCOLL AC"],["2858","BNYMELLON/RE FIRM SMPT ASSETS"],["2862","TRADEUP SECURITIES, INC./STOCK LOAN CONDUIT"],["2863","DEUTSCHE BANK AG NEW YORK BRANCH/CLT DB LONDON MMA"],["2866","BNYMELLON/EXODUSPOINT CAPITAL"],["2868","BNYMELLON/RE FIRM SECURED FINANCE"],["2869","BNYMELLON/RE ETF - ISHARES DTC/NSCC"],["2871","TRUIST BANK/IP TRUIST COMMERCIAL EQUITY, INC."],["2872","VELOCITY CLEARING, LLC/FIXED INCOME"],["2873","BNYMELLON/ECRE MAIN CAYMAN HOLDINGS LTD"],["2874","THE BANK OF NEW YORK MELLON/CHIMERA INVESTMENT CORPORATION"],["2875","THE BANK OF NEW YORK MELLON/CHIMERA RMBS WHOLE POOL LLC (F/K/A CIM ASS"],["2880","CENTRAL TRUST BANK (THE)"],["2881","BNYMELLON/ELLINGTON MGMT GRP OMNIBUS/EMG ADVISED ACTS"],["2884","BNP PARIBAS, NEW YORK BRANCH/BNP PARIBAS PRIME BROKERAGE INTERNATIONAL"],["2885","BNP PARIBAS SECURITIES CORP./PRIME STOCK LENDING"],["2888","MIZUHO BANK (USA)"],["2893","THE BANK OF NEW YORK MELLON/CHIMERA RMBS LLC (F/K/A CIM HOLDING)"],["2894","HSBC BANK USA, N.A./CORPORATE TRUST IPA"],["2897","U.S. BANK N.A./TRUST NY MTN"],["2898","FIFTH THIRD BANK, NA/FBO SCHOOL EMPLOYEE RETIREMENT SYSTEM OF OHIO"],["2899","THE BANK OF NEW YORK MELLON/CHIMERA SECURITIES HOLDING LLC"],["2901","THE BANK OF NEW YORK MELLON/CHIMERA SPECIAL HOLDING LLC"],["2903","THE BANK OF NEW YORK MELLON/BAKER2"],["2906","THE BANK OF NEW YORK MELLON/CHIMERA TRADING COMPANY LLC"],["2908","BNYMELLON/RE ANZ MELBOURNE"],["2909","BNYMELLON/RE BARCLAYS BANK IRELAND TREASURY ACCT"],["2912","BNYMELLON/RE ELLINGTON SPECIAL RELATIVE VALUE FUND LLC"],["2919","BNYMELLON/RE HSBC FRANCE"],["2920","THE BANK OF NEW YORK MELLON/NATIXIS SECURITIES AMERICAS LLC"],["2922","BNYMELLON/RE BARCLAYS BANK IRELAND"],["2924","GOLDMAN SACHS INTERNATIONAL/REHYP SEPARATION ACCOUNT"],["2925","PRINCIPAL BANK"],["2931","BNYMELLON/RE BARCLAYS BANK PLC"],["2932","MITSUBISHI UFJ TRUST \u0026 BANKING CORPORATION, NEW YORK BRANCH"],["2937","PNC BANK, N.A./HPRS"],["2941","GOLDMAN SACHS BANK USA"],["2945","JPMORGAN CHASE-FIMAT CU"],["2947","BNYMELLON/RE BARCLAY BANK IRELAND PLC F"],["2948","BNYMELLON/RE MIZUHO SECURITIES EUROPE GMBH"],["2950","STATE STREET BANK \u0026 TRUST/STATE STREET TOTALETF"],["2952","CITIBANK N.A. LONDON/MTN"],["2963","CITADEL SECURITIES INSTITUTIONAL LLC"],["2971","TRUIST BANK"],["2972","BNYMELLON/ELLINGTON FINANCIAL REIT QLH LLC"],["2973","JPMORGAN CHASE BANK/MET LIFE LOANET"],["2974","BNYMELLON/DE SHAW US BR MRK CO AL EXPORT LLC"],["2975","FIFTH THIRD BANK, NATIONAL ASSOCIATION/PUBLIC EMPLOYEES RETIREMENT"],["2981","BNYMELLON/PUBLIC EMPLOYEES RETIREMENT SYSTEM OF OHIO"],["2985","BNYMELLON/RE RBC I\u0026TS"],["2986","FUTU CLEARING INC./FUTC CONDUIT"],["2993","CHARLES SCHWAB TRUST BANK"],["3000","FEDERAL RESERVE BANK OF NEW YORK"],["3018","GREEN PIER FINTECH LLC"],["3021","ALPACA SECURITIES LLC"],["3023","FIFTH THIRD BANK, NATIONAL ASSOCIATION/STAR OHIO"],["3024","THE BANK OF NEW YORK MELLON/CITADEL CMFC"],["3025","J.P. MORGAN SECURITIES LLC/JP MORGAN MARKETS LIMITED"],["3036","INTERCHANGE CLEARING LLC"],["3037","BNYMELLON/RE NORDEA FI/COLLATERAL"],["3051","JANE STREET CAPITAL, LLC/II"],["3106","THE BANK OF NEW YORK MELLON/ACCOUNT 40"],["3127","THE BANK OF NEW YORK MELLON/ACCOUNT 41"],["3131","THE BANK OF NEW YORK MELLON/ACCOUNT 42"],["3138","THE BANK OF NEW YORK MELLON/ACCOUNT 43"],["3156","THE BANK OF NEW YORK MELLON/ACCOUNT 44"],["3164","ALTRUIST FINANCIAL LLC"],["3255","THE BANK OF NEW YORK MELLON/ACCOUNT 47"],["3256","THE BANK OF NEW YORK MELLON/ACCOUNT 45"],["3259","CANTOR FITZGERALD \u0026 CO./CANTOR FITZGERALD RC"],["3272","BANK OF MONTREAL, CHICAGO BRANCH/CM"],["3276","DRIVEWEALTH, LLC/SECURITIES LENDING"],["3282","WELLS FARGO SECURITIES, LLC/WELLS FARGO BANK INTERNATIONAL UC"],["3337","THE BANK OF NEW YORK MELLON/ACCOUNT 46"],["3341","PUBLIC VENTURES, LLC DBA MDB CAPITAL"],["3350","ROYAL BANK OF CANADA, WFC BRANCH"],["3360","DRIVEWEALTH, LLC/FPL"],["3438","U.S. BANK N.A./WMIS"],["3450","CURVATURE SECURITIES, LLC"],["3483","BNYMELLON/RBC"],["3492","JANE STREET EXECUTION SERVICES, LLC"],["3499","SANTANDER US CAPITAL MARKETS LLC/OCC CLEARING"],["3505","ETC BROKERAGE SERVICES, LLC"],["3516","THE BANK OF NEW YORK MELLON/WFC HOLDINGS CORPORATION"],["3531","ALPACA SECURITIES LLC/FPSL"],["3570","BNYMELLON / BANCO SANTANDER SA"],["3575","THE BANK OF NEW YORK MELLON/MIZUHO SECURITIES SINGAPORE"],["3577","ALTRUIST FINANCIAL LLC/STOCK LOAN ACCOUNT"],["3593","BNYMELLON/RE NORDEA FI/SEC FINANCE SE"],["3598","CURVATURE SECURITIES, LLC/EQUITY FINANCE"],["3609","SAL EQUITY TRADING, GP"],["3613","BNYMELLON/MILLENNIUM PARTNERS"],["3618","THE BANK OF NEW YORK MELLON/BANK OF AMERICA"],["3622","J.P. MORGAN CHASE BANK NA/FBO BLACKROCK CTF"],["3645","BNYMELLON/ELLINGTON WARLANDER MSTR FD LP"],["3647","BNYMELLON/ELLINGTON M CREDIT MASTER FUND LTD"],["3652","LUCID CAPITAL MARKETS, LLC DBA AMERICAS EXECUTIONS"],["3660","THE BANK OF NEW YORK MELLON/BBVA SA"],["3664","SOFI SECURITIES, LLC"],["3665","THE BANK OF NEW YORK MELLON/MILLENNIUM INTEGRATED CORE STRATEGIES, US"],["3670","MIZUHO SECURITIES USA LLC/MIZUHO MARKETS CAYMAN"],["3674","THE BANK OF NEW YORK MELLON/SCB"],["3685","THE BANK OF NEW YORK MELLON/BANK OF CHINA"],["3691","ROBINHOOD SECURITIES, LLC/SECURITIES LENDING"],["3707","THE BANK OF NEW YORK MELLON/TRADITION"],["3708","THE BANK OF NEW YORK MELLON/MLI 2"],["3709","THE BANK OF NEW YORK MELLON/ MERRILL LYNCH CAPITAL SERVICES INC (MLCS)"],["3721","CITIBANK, N.A./MACQUARIE BANK LIMITED"],["3723","CITIBANK, N.A./COMPUTERSHARE"],["3727","BMO BANK NA/BMO HARRIS INVESTMENT COMPANY"],["3731","BMO BANK NA/CORPORATE TREASURY"],["3737","BBVA SECURITIES INC./BBVA SA NEW YORK BRANCH"],["3738","THE BANK OF NEW YORK MELLON/BOFA SECURITIES EUROPE SA (BOFASE)"],["3741","THE BANK OF NEW YORK MELLON/MERRILL LYNCH INTERNATIONAL (MLI)"],["3742","THE BANK OF NEW YORK MELLON/BOFASE 2"],["3744","THE BANK OF NEW YORK MELLON/MLCS 2"],["3772","DESERET TRUST COMPANY/M"],["3777","JPMORGAN CHASE BANK NA/BLACKROCK MUTUAL FUNDS"],["3793","COMPUTERSHARE TRUST COMPANY, N.A./CORPORATE TRUST"],["3833","TCBI SECURITIES, INC."],["3856","VELOX CLEARING LLC"],["3884","JPMORGAN CHASE BANK, NATIONAL ASSOCIATION/INTERMEDIARY HOLDING COMPANY"],["3915","JPMORGAN CHASE BANK, NATIONAL ASSOCIATION/FBO TEMASEK INTERNATIONAL"],["3916","BNYMELLON/NOMURA FINANCIAL PRODUCTS EUROPE GMBH"],["3920","EQUINITI TRUST COMPANY, LLC"],["3926","CITIBANK, N.A./S.D. INDEVAL INSTITUCION PARA EL DEPOSITO DE VALORES,"],["3932","MAREX CAPITAL MARKETS INC. / SECURITIES LENDING"],["3935","MORGAN STANLEY \u0026 CO. INTERNATIONAL PLC/MORGAN STANLEY BANK A.G."],["3939","SMBC NIKKO SECURITIES AMERICA, INC."],["3944","GOLDMAN SACHS BANK USA/GS \u0026 CO. LLC FCM CLEARED SWAPS CUST OMNIBUS"],["3951","NATIONAL FINANCIAL SERVICES/ FIDELITY AGENCY LENDING"],["3961","BUCKLER SECURITIES LLC"],["3967","BNYMELLON/RE RBC CAPITAL MARKETS (EUROPE) GMBH"],["3968","BNYMELLON/RE HH ELLINGTON MASTER FUND II LTD"],["3970","BNYMELLON/RE FIRM SAM NA"],["3972","BNYMELLON/BARCLAYS BANK IRELAND"],["3973","BNYMELLON/RE SMBC CAPITAL MARKETS FRANKFURT"],["3974","CITIBANK, N.A./BLACKROCK ETF"],["3975","BOKF, NATIONAL ASSOCIATION"],["3995","THE BANK OF NEW YORK MELLON/CBOE CLEAR EUROPE SFT"],["4000","THE BANK OF NEW YORK MELLON/ACCOUNT 49"],["4001","THE BANK OF NEW YORK MELLON/ACCOUNT 50"],["4002","THE BANK OF NEW YORK MELLON/ACCOUNT 51"],["4005","THE BANK OF NEW YORK MELLON/ACCOUNT 52"],["4024","CREDIT AGRICOLE CORPORATE AND INVESTMENT BANK"],["4027","CITIBANK, N.A./PUERTO RICO IBE"],["4031","ROBINHOOD SECURITIES, LLC/CUSTODY"],["4048","BROWN BROTHERS HARRIMAN \u0026 CO. /SECURITIES LENDING SPO ACCOUNT II"],["4053","TRUIST BANK/SUPPLY CHAIN FINANCE"],["4056","GOLDMAN SACHS INTERNATIONAL/GOLDMAN SACHS BANK EUROPE SE"],["4077","BETA CAPITAL SECURITIES LLC"],["4084","BNYMELLON/RE FIRM NA"],["4085","BNYMELLON/RE LME CLEAR"],["4086","BNYMELLON/RE ELLINGTON MRTG RECOVERY MASTER F LP"],["4087","BNYMELLON/RE BCSL PB SEG AC 5"],["4088","BNYMELLON/RE ARBEJDSMARKEDETS TILLAEGSPENSION"],["4101","JPMORGAN CHASE BANK, N.A./JPMORGAN CHASE HOLDINGS LLC"],["4102","JPMORGAN CHASE BANK, N.A./CHIEF INVESTMENT OFFICE 4"],["4191","MUFG SECURITIES EMEA PLC"],["4204","REGIONS BANK"],["4209","MORGAN STANLEY PRIVATE BANK, NATIONAL ASSOCIATION/ MSPBNA CIO"],["4215","TD SECURITIES (USA) LLC/PHYSICAL ACCOUNT"],["4230","TRADELINK SECURITIES LLC"],["4231","CLEAR STREET LLC/SECURITIES LENDING"],["4252","BNP PARIBAS NEW YORK BRANCH /BNP PARIBAS SA (METLIFE)"],["4254","SCOTIA CAPITAL (USA) INC./AS AGENT FOR THE BANK OF NOVA SCOTIA,TORONTO"],["4264","ICE SECURITIES EXECUTION \u0026 CLEARING, LLC"],["4265","MARKETAXESS CORPORATION"],["4272","FUTU CLEARING INC."],["4290","THE BANK OF NEW YORK MELLON/ACCOUNT 53"],["4294","THE BANK OF NEW YORK MELLON/ACCOUNT 54"],["4296","THE BANK OF NEW YORK MELLON/ACCOUNT 55"],["4300","THE BANK OF NEW YORK MELLON/ACCOUNT 56"],["4302","MARKETAXESS CAPITAL LIMITED"],["4304","THE BANK OF NEW YORK MELLON/ACCOUNT 57"],["4305","RQD* CLEARING, LLC"],["4309","THE BANK OF NEW YORK MELLON/ACCOUNT 58"],["4310","THE BANK OF NEW YORK MELLON/ACCOUNT 59"],["4312","THE BANK OF NEW YORK MELLON/ACCOUNT 60"],["4317","THE BANK OF NEW YORK MELLON/ACCOUNT 61"],["4327","CITIBANK, N.A./CITIBANK MARGIN LOANS"],["4330","THE BANK OF NEW YORK MELLON/ACCOUNT 62"],["4341","BNYMELLON/RE HSBC UK BANK PLC"],["4343","THE BANK OF NEW YORK MELLON/ACCOUNT 63"],["4346","THE BANK OF NEW YORK MELLON/ACCOUNT 64"],["4352","MORGAN STANLEY \u0026 CO. INTERNATIONAL PLC/MSIP DTC OTC MARGIN RE-HYPE"],["4353","MORGAN STANLEY \u0026 CO. INTERNATIONAL PLC/MSIP DTC OTC MARGIN NON RE-HYPE"],["4358","THE BANK OF NEW YORK MELLON/ACCOUNT 65"],["4368","THE BANK OF NEW YORK MELLON/ACCOUNT 66"],["4369","THE BANK OF NEW YORK MELLON/ACCOUNT 67"],["4371","HIDDEN ROAD PARTNERS CIV US LLC/FIXED INCOME"],["4404","GOLDMAN SACHS \u0026 CO. LLC/CME HOUSE COLLATERAL ACCT"],["4405","NOMURA SECURITIES INTERNATIONAL, INC./CORPORATE EQUITY DERIVATIVE CUST"],["4424","VELOCITY CAPITAL LLC/CLEARING ACCOUNT"],["4439","APEX CLEARING CORPORATION/OCC PLEDGEE ACCOUNT"],["4462","BNYMELLON/RE NM PERA ELLINGTON ENHANCED INCOME FUND A LLC"],["4467","MIZUHO SECURITIES USA LLC/MIZUHO MARKETS AMERICA FIXED INCOME"],["4700","THE BANK OF NOVA SCOTIA/BNS PRIME GLOSS/CDS"],["4706","BMO NESBITT BURNS INC./BMO NB EQUITY FINANCE BMO UK BRANCH/CDS"],["4707","ROYAL BANK OF CANADA-ROYAL TRUST/CDS**"],["4714","TORONTO-DOMINION BANK (THE)/TDGF MARGIN ACCOUNT/CDS"],["4715","BANK OF NOVA SCOTIA/SCOTIABANK IRELAND DAC/CDS"],["4717","TORONTO-DOMINION BANK (THE)/TD GLOBAL FINANCE UNLIMITED COMPANY/CDS"],["4723","BANK OF MONTREAL/ EQUITIES/CDS"],["4726","CANADIAN IMPERIAL BANK OF COMMERCE/CIBC PARENT BANK GLOBAL MARKETS/CDS"],["4727","CANADIAN IMPERIAL BANK OF COMMERCE/CIBC TREASURY/CDS"],["4755","NATIONAL BANK OF CANADA/CDS"],["4794","THE BANK OF NOVA SCOTIA/PRINCIPAL EQUITIES/CDS**"],["4795","THE BANK OF NOVA SCOTIA/SUB FIXED INCOME/IMPACT/CDS**"],["4797","BMO NESBITT BURNS/INSTITUTIONAL CDS**"],["4800","CDS CLEARING AND DEPOSITORY SERVICES INC."],["4801","RBC DOMINION SECURITIES INC./CDS**"],["4802","BANK OF NOVA SCOTIA/BNS LONDON/CDS**"],["4805","TORONTO-DOMINION BANK (THE)/CDS"],["4808","J.P. MORGAN SECURITIES CANADA INC. **"],["4809","BMO NESBITT BURNS INC./BMO NB EQUITY FINANCE CMLUK/CDS**"],["4810","THE BANK OF NOVA SCOTIA/BNS TOR PRINCIPAL GLOSS/CDS"],["4812","THE BANK OF NOVA SCOTIA/CDS**"],["4814","THE BANK OF NOVA SCOTIA/ SCE LTD./CDS**"],["4816","THE BANK OF NOVA SCOTIA/CLIENT A"],["4817","BANK OF MONTREAL/ CHICAGO/CDS**"],["4818","FIDUCIE DESJARDINS INC.**"],["4819","BANK OF MONTREAL/ IRELAND/CDS**"],["4822","BANK OF MONTREAL/ LONDON/CDS**"],["4838","THE BANK OF NOVA SCOTIA/CLIENT B/CDS**"],["4845","BANK OF MONTREAL/US TRANSIT/CDS"],["4855","BANK OF MONTREAL**"],["4947","BMO NESBITT BURNS INC./BMO NB EQUITY FINANCE BMIRE/CDS**"],["5001","LAURENTIAN BANK SECURITIES INC. /CDS"],["5002","RBC DOMINION SECURITIES INC./CDS**"],["5003","SOCIETE GENERALE CAPITAL CANADA INC./CDS**"],["5004","WEALTHSIMPLE INVESTMENTS INC./CDS"],["5006","QUESTRADE INC./SECURITIES LENDING/CDS"],["5008","NATIONAL BANK FINANCIAL INC./CDS**"],["5011","SCOTIA CAPITAL INC./CDS**"],["5012","EDWARD JONES/CDS**"],["5013","CALDWELL SECURITIES LTD./CDS**"],["5014","PETERS \u0026 CO. LIMITED/CDS**"],["5017","UBS SECURITIES CANADA INC./CDS**"],["5027","PICTET CANADA L.P./CDS**"],["5028","DESJARDINS SECURITIES INC./CDS**"],["5029","RESEARCH CAPITAL CORPORATION/CDS**"],["5030","CIBC WORLD MARKETS INC./CDS**"],["5032","NATIONAL BANK FINANCIAL INC. #2/CDS**"],["5036","TD WATERHOUSE CANADA INC./CDS**"],["5040","FIDELITY CLEARING CANADA ULC/CDS**"],["5041","CLEAR STREET CANADA INC./CDS"],["5043","BMO NESBITT BURNS INC./CDS**"],["5044","ROYAL BANK OF CANADA-ROYAL TRUST 1/CDS**"],["5046","CANACCORD GENUITY CORP./CDS**"],["5058","HAYWOOD SECURITIES INC./CDS**"],["5068","CDS CLEARING AND DEPOSITORY SERVICES INC./CDS DEFAULT MANAGEMENT"],["5071","LEEDE FINANCIAL INC./CDS**"],["5074","ODLUM BROWN LIMITED/CDS**"],["5075","VENTUM FINANCIAL CORP./CDS**"],["5076","RAYMOND JAMES LTD./CDS**"],["5078","W.D. LATIMER CO LTD./CDS**"],["5083","AVISO FINANCIAL INC./CDS"],["5084","QUESTRADE INC./CDS**"],["5085","CI INVESTMENT SERVICES INC./CDS"],["5099","CDS CLEARING AND DEPOSITORY SERVICES INC.**"],["5104","ING FINANCIAL MARKETS LLC/INTERNATIONAL"],["5128","HILLTOP SECURITIES INC./STOCK LOAN"],["5143","BOFA SECURITIES, INC. /SECURITIES LENDING"],["5153","BNP PARIBAS NY BRANCH LONDON BONDS"],["5157","NATIONAL FINANCIAL SERVICES LLC/STOCK LOAN"],["5162","DEUTSCHE BANK SECURITIES INC.-INTERNATIONAL STOCK LOAN"],["5163","PERSHING LLC/SL"],["5166","WEDBUSH SECURITIES INC./STOCK LOAN"],["5176","BOFA SECURITIES, INC. /FOREIGN SECURITIES LENDING"],["5179","RAYMOND JAMES \u0026 ASSOCIATES, INC./RAYMOND JAMES TRUST COMPANY"],["5180","NSI STOCK LENDING"],["5196","PERSHING LLC/SL INT\u0027L"],["5198","BOFA SECURITIES, INC. /SAFEKEEPING"],["5199","WELLS FARGO SECURITIES, LLC/SIG WELLS FARGO SECURITIES INT\u0027L, LTD"],["5208","GOLDMAN SACHS INTERNATIONAL"],["5213","J.P. MORGAN SECURITIES LLC/JPMC LENDING"],["5215","CITIGROUP GLOBAL MARKETS INC./SALOMON BROTHERS/A.M.M."],["5217","FMSBONDS, INC."],["5221","BMO CAPITAL MARKETS CORP./PALOMA"],["5222","NOMURA SECURITIES/FIXED INCOME"],["5224","MORGAN STANLEY \u0026 CO. LLC/III"],["5225","DEUTSCHE BANK SECURITIES INC./FIXED INCOME"],["5237","WELLS FARGO CLEARING SERVICES LLC/SECURITIES LENDING MATCH BOOK"],["5241","SG AMERICAS SECURITIES, LLC/FOREIGN STOCK LOAN"],["5253","CANTOR FITZGERALD/STOCK LOAN"],["5257","BMOCM/BONDS"],["5262","ING FINANCIAL MARKETS LLC/LTD."],["5263","NATWEST MARKETS SECURITIES INC."],["5268","ING FINANCIAL MARKETS LLC/INTERNATIONAL EQUITY FINANCE"],["5271","BGC FINANCIAL L.P./BGC BROKERS L.P."],["5284","UBS SECURITIES LLC/SECURITIES LENDING"],["5300","NYSE ARCA, INC."],["5409","RELIANCE TRUST COMPANY/FIS TRUSTDESK MKE"],["5600","JAPAN SECURITIES DEPOSITORY CENTER, INC."],["5610","CAJA DE VALORES S.A."],["5700","THE CENTRAL DEPOSITORY (PTE) LIMITED"],["5855","PAXOS TRUST COMPANY, NATIONAL ASSOCIATION"],["5903","MIZUHO SECURITIES USA LLC/MIZUHO MARKETS AMERICA"],["5954","MATRIX TRUST COMPANY"],["5962","RELIANCE TRUST COMPANY"],["5981","AXOS CLEARING LLC/AXOS ADVISOR SERVICES"],["6019","VELOCITY CAPITAL LLC"],["6501","BNYMELLON/RE ANZ BANKING GROUP LIMITED"],["6582","MERRILL LYNCH, PIERCE, FENNER \u0026 SMITH INCORPORATED/STOCK LOAN"],["6769","ROBINHOOD SECURITIES, LLC"],["7254","BARCLAYS CAPITAL INC./BARCLAYS BANK PLC, LONDON BRANCH"],["7256","BARCLAYS CAPITAL INC./BARCLAYS CAPITAL INC. FIXED INCOME"],["7260","AMERICAN ENTERPRISE INVESTMENT SERVICES INC./CONDUIT"],["7263","BARCLAYS BANK PLC NEW YORK BRANCH"],["7268","STATE STREET BANK \u0026 TRUST COMPANY/LENDING PASS-THROUGH"],["7273","ING FINANCIAL MARKETS LLC/INTERNATIONAL EQUITY FINANCE MATCH BOOK"],["7276","INSTINET, LLC/STOCK LOAN"],["7295","CIBC WORLD MARKETS CORP./CIBC WORLD MARKETS CORP. REPO"],["7305","MERRILL LYNCH PIERCE FENNER \u0026 SMITH INC.-MLIM GLOBAL SECURITIES"],["7309","MORGAN STANLEY \u0026 CO. INTERNATIONAL PLC"],["7311","CANTOR FITZGERALD \u0026 CO./DEBT CAPITAL MARKETS"],["7320","JANNEY MONTGOMERY SCOTT LLC/STOCK LOAN"],["7322","CHARLES SCHWAB \u0026 CO., INC. STOCK LOAN CONDUIT ACCOUNT"],["7350","WOLVERINE EXECUTION SERVICES, LLC"],["7359","VELOCITY CLEARING, LLC/STOCK LOAN"],["7372","CREDIT AGRICOLE SECURITIES (USA) INC/F/B/O CREDIT AGRICOLE NY BRANCH"],["7380","MIZUHO SECURITIES USA LLC/MIZUHO CAPITAL MARKETS LLC"],["7381","RELIANCE TRUST COMPANY/FIS GLOBAL PLUS"],["7382","BNP PARIBAS NY BRANCH/PARIS BONDS"],["7387","BNYMELLON/RE HSBC BANK HONG KONG"],["7408","RBC CAPITAL MARKETS, LLC/RBCCM"],["7441","JEFFERIES LLC/AS AGENT FOR JEFFERIES INTERNATIONAL LONDON"],["7451","SOUTH STREET SECURITIES LLC"],["7507","NOMURA SECURITIES INTERNATIONAL, INC./AFFILIATE CLEARING"],["7540","CREDIT AGRICOLE SECURITIES (USA) INC/STOCK LOAN CONDUIT"],["7560","BOFA SECURITIES, INC. /STOCK LOAN HEDGE ACCOUNT"],["7561","DAIWA CAPITAL MARKETS AMERICA INC./DASAC"],["7565","JEFFERIES LLC/SECURITIES FINANCE"],["7568","RAYMOND JAMES \u0026 ASSOCIATES, INC / RAYMOND JAMES BANK"],["7576","AXOS CLEARING LLC/STOCK LOAN"],["7587","CHARLES SCHWAB \u0026 CO., INC./SCHWAB GLOBAL INVESTING ACCOUNT"],["7595","ING FINANCIAL MARKETS LLC/GLOBAL SECURITIES FINANCE NON-PURPOSE"],["8020","S.D. INDEVAL INSTITUCION PARA EL DEPOSITO DE VALORES S.A. DE C.V."],["8035","TRADESTATION SECURITIES, INC./TRADESTATION SECURITIES, INC."],["8043","BNYMELLON/WFB.NA WELLS FARGO BANK NA PI"],["8072","ALPINE SECURITIES CORPORATION"],["8077","BNYMELLON/WF \u0026 CO WELLS FARGO \u0026 COMPANY"],["8082","ZIV INVESTMENT CO."],["8107","BNYMELLON/RE FIRM BORROW PLUS"],["8112","JPMORGAN CHASE BANK/OHIO POLICE AND FIRE PENSION FUND"],["8113","ITAU BBA USA SECURITIES, INC."],["8115","THE BANK OF NEW YORK MELLON/EARN SECURITIES LLC"],["8116","THE BANK OF NEW YORK MELLON/EARN CMO LLC"],["8117","THE BANK OF NEW YORK MELLON/EARN MORTGAGE LLC"],["8118","SCOTIA CAPITAL (USA) INC./STOCK LOAN"],["8119","SCOTIA CAPITAL (USA) INC./INTERNATIONAL STOCK LOAN"],["8123","THE BANK OF NEW YORK MELLON/NOMURA FIN. PRODUCTS \u0026 SERVICES INC."],["8132","BNYMELLON/RE FIRM HOLDING CO."],["8139","BNYMELLON/BBDE DTC FIRM ACCOUNT FOR MLCD"],["8147","STATE STREET BANK \u0026 TRUST COMPANY/EC, GMBH"],["8150","MID ATLANTIC TRUST COMPANY"],["8164","CITIBANK N.A./PROPRIETARY ASSETS"],["8183","BNP PARIBAS NEW YORK BRANCH/USAL"],["8185","TD SECURITIES (USA) LLC/STOCK LOAN CONDUIT"],["8187","JPMORGAN CHASE BANK, NATIONAL ASSOCIATION/PUBLIC EMPLOYEE RETIREMENT"],["8197","GOLDMAN SACHS BANK USA/ #2"],["8199","WEDBUSH SECURITIES INC./P3"],["8233","ZIONS BANCORPORATION, NATIONAL ASSOCIATION/PORTFOLIO"],["8237","WEDBUSH SECURITIES INC. / P3 STOCK LOAN"],["8238","BNP PARIBAS SECURITIES CORP./PRIME ARBITRAGE SLAB"],["8244","FIRST TRUST PORTFOLIOS, L.P."],["8275","BNY MELLON/WEALTH MANAGEMENT"],["8308","APEX CLEARING CORPORATION/APEX CLEARING STOCK LOAN"],["8311","BNYMELLON/RE BNYMLB RE FIRM"],["8313","BNYMELLON/RE CACEIS BANK"],["8314","BNYMELLON/RE CBD BAADER AG"],["8317","BNYMELLON/RE CBD STEUBING AG"],["8318","BNYMELLON/RE WINTERFLOOD SECURITIES LTD"],["8320","BNYMELLON/RE CACEIS BANK LUXEMBOURG"],["8321","BNYMELLON/RE GFI SECURITIES LTD"],["8353","NATIONAL BANK OF CANADA FINANCIAL INC."],["8355","BNYMELLON/RE UIT NSCC CNS CLEARANCE"],["8385","STIFEL, NICOLAUS \u0026 COMPANY, INC./STIFEL SECURITIES LENDING"],["8396","HSBC BANK USA, NA/CLEARING"],["8402","HSBC BANK USA, NA/HTM"],["8404","HSBC BANK USA, NA/AFS"],["8412","BNYMELLON/ELLINGTON MGMT. GRP OMNIBUS FOR EFM ADVISED ACCTS"],["8417","BNYMELLON/RE FFT RE FIRM"],["8420","BNYMELLON/RE NA-BANK CUSTODY"],["8421","BNYMELLON/RE BNYMIL FIRM"],["8423","BNYMELLON/RE RABOBANK LONDONBRANCH FIXED INCOME"],["8430","CITADEL SECURITIES LLC"],["8434","RELIANCE TRUST COMPANY/FIS TRUST DESK"],["8445","DEALERWEB INC."],["8447","JPMCB/DNT ASSET TRUST"],["8455","BARCLAYS BANK PLC NEW YORK BRANCH/BARCLAYS BANK PLC-LNBR"],["8456","TP ICAP GLOBAL MARKETS AMERICAS LLC/CROSSTRADE"],["8457","SAFRA SECURITIES LLC"],["8460","PHILLIP CAPITAL INC."],["8462","BNP PARIBAS NEW YORK BRANCH/BNP PARIBAS PROPRIETARY ASSETS"],["8471","BNYMELLON/RE CBD ICF BANK AG"],["8472","BNYMELLON/RE RBC BARBADOS"],["8475","BNYMELLON/RE RBCEL FIXED INCOME"],["8476","BNYMELLON/RE BARCLAYS BANK PLC LONDON"],["8478","BNYMELLON/RE BBPLC CLIENT COLL SEC LNBR SEG"],["8481","BNYMELLON/RE BARCLAYS OVERSIGHT MANAGEMENT INC"],["8482","BNYMELLON/RE RBCLB FIXED INCOME"],["8483","BNYMELLON/RE BGC FINANCIAL LP M/M"],["8485","DESERET TRUST COMPANY - A"],["8486","TEXAS TREASURY SAFEKEEPING TRUST COMPANY/NUP"],["8488","BNYMELLON/RE COOPERATIEVE RABOBANK U.A."],["8489","BNYMELLON/RE GCM CLIENT ACCOUNTS"],["8490","BNYMELLON/RE RBC BAHAMAS BRANCH"],["8491","BNYMELLON/RE DESHAW US BMCAE CUSTOM PORT L.L.C"],["8493","VISION FINANCIAL MARKETS LLC/SECURITIES LENDING"],["8497","JANE STREET CAPITAL, LLC"],["8513","MURIEL SIEBERT \u0026 CO., LLC/#2"],["8699","GOLDMAN SACHS \u0026 CO. LLC/IMS"],["8846","FEDERAL HOME LOAN MORTGAGE CORPORATION/MULTIFAMILY"],["8858","CLEAR STREET LLC/CLEAR STREET UK LIMITED"],["8860","BETHESDA SECURITIES, LLC"],["8861","JPMORGAN CHASE BANK/JP MORGAN PROPRIETARY ASSET ACCOUNT"],["8862","MERRILL LYNCH, PIERCE, FENNER \u0026 SMITH INCORPORATED/8862 MLPF\u0026S TS SUB"],["8867","JPMORGAN CHASE BANK/CHIEF INVESTMENT OFFICE"],["8869","JPMORGAN CHASE BANK/CHIEF INVESTMENT OFFICE 2"],["8870","STONEX FINANCIAL INC./STOCK LOAN"],["8871","JPMORGAN CHASE BANK/CHIEF INVESTMENT OFFICE 3"],["8873","MAREX CAPITAL MARKETS INC."],["8875","MORGAN STANLEY SMITH BARNEY LLC/SL CONDUIT"],["9132","CLEAR STREET LLC"],["9180","GOLDMAN SACHS BANK USA/GS \u0026 CO. LLC FCM CUST OMNIBUS ACCT CFTC REG"],["9186","B. RILEY SECURITIES, INC."]]};
+</script>
+<script>
+// ===================================================================
+// Rules: pure functions that read the statement text and check what
+// Claude returned against it. No page state, so they can be tested alone.
+// ===================================================================
+const ACAT = (() => {
+"use strict";
+const str = (v) => (v == null ? "" : String(v).trim());
+const alnum = (s) => str(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
+const words = (s) => " " + str(s).toUpperCase().replace(/[^A-Z0-9&]+/g, " ").trim() + " ";
+
+const ACCOUNT_TYPES = [
+  "Individual", "Joint", "Trust", "Estate", "UGMA/UTMA", "Corporate/Business",
+  "Traditional or Rollover IRA", "Roth IRA", "SEP IRA", "SIMPLE IRA", "Beneficiary IRA", "Roth Beneficiary IRA",
+  "403(b)7", "Qualified Plan", "Coverdell ESA",
+  "529 plan", "HSA", "Annuity", "Insurance policy", "Planning or advisory service", "Bank account", "Other"
+];
+const NON_ACAT_TYPES = new Set(["Annuity", "Insurance policy", "Planning or advisory service", "Bank account", "529 plan", "HSA"]);
+const TRANSFER_TYPES = [
+  ["full_in_kind", "Full transfer, all assets in kind"],
+  ["partial_in_kind", "Partial transfer in kind"],
+  ["liquidate_all", "Liquidate all and transfer cash"],
+  ["liquidate_partial", "Liquidate part and transfer cash"],
+  ["cash_only", "Cash only"]
+];
+
+// Clearing, carrying and custodian firms the rules can name on their own.
+const KNOWN_FIRMS = [
+  ["American Enterprise Investment Services, Inc.", /American Enterprise Investment Services|\bAEIS\b/i],
+  ["National Financial Services LLC", /National Financial Services|\bNFS\b/],
+  ["Pershing LLC", /\bPershing\b/i],
+  ["Charles Schwab & Co., Inc.", /Charles Schwab & Co/i],
+  ["Fidelity Brokerage Services LLC", /Fidelity Brokerage Services/i],
+  ["Apex Clearing Corporation", /Apex Clearing/i],
+  ["RBC Capital Markets, LLC", /RBC (?:Capital Markets|Correspondent Services|Clearing)/i],
+  ["Edward D. Jones & Co., L.P.", /Edward D\.? Jones & Co/i],
+  ["Vanguard Brokerage Services", /Vanguard Brokerage Services|Vanguard Marketing Corporation/i],
+  ["Merrill Lynch, Pierce, Fenner & Smith Inc.", /Merrill Lynch,? Pierce|BofA Securities/i],
+  ["Morgan Stanley Smith Barney LLC", /Morgan Stanley Smith Barney/i],
+  ["E*TRADE Securities LLC", /E\*TRADE (?:Securities|Clearing)/i],
+  ["Wells Fargo Clearing Services, LLC", /Wells Fargo Clearing|First Clearing/i],
+  ["Raymond James & Associates, Inc.", /Raymond James & Associates/i],
+  ["LPL Financial LLC", /LPL Financial/i],
+  ["Goldman Sachs & Co. LLC", /Goldman,? Sachs & Co|GS&Co/i],
+  ["J.P. Morgan Securities LLC", /J\.?P\.? Morgan Securities/i],
+  ["UBS Financial Services Inc.", /UBS Financial Services/i],
+  ["Stifel, Nicolaus & Company", /Stifel,? Nicolaus/i],
+  ["StoneX Financial Inc.", /StoneX Financial/i],
+  ["Hilltop Securities Inc.", /Hilltop Securities/i],
+  ["Axos Clearing LLC", /Axos Clearing/i],
+  ["Interactive Brokers LLC", /Interactive Brokers/i],
+  ["TD Ameritrade Clearing, Inc.", /TD Ameritrade Clearing/i],
+  ["D.A. Davidson & Co.", /D\.?\s?A\.? Davidson & Co/i],
+  ["Robert W. Baird & Co.", /Robert W\.? Baird/i],
+  ["Janney Montgomery Scott LLC", /Janney Montgomery Scott/i],
+  ["Oppenheimer & Co. Inc.", /Oppenheimer & Co/i],
+  ["Robinhood Securities, LLC", /Robinhood Securities/i]
+];
+// Wording that names the firm holding or clearing the account, and how strongly.
+const CLEARING_CUES = [
+  [/the\s+clearing\s+(?:broker[\s-]*dealer|firm|broker|agent)|clearing\s+(?:broker[\s-]*dealer|firm)\s+(?:is|for)/i, "clearing"],
+  [/clears?\s+(?:through|via)|cleared\s+(?:through|by)|clearing\s+(?:services\s+)?(?:provided\s+)?by/i, "clearing"],
+  [/carried\s+(?:with|by)|carries\s+your/i, "carrying"],
+  [/custodian\s+(?:of|for)\s+(?:your|the|all|I\s?RA)|custodian:|as\s+custodian|serves\s+as\s+(?:the\s+)?custodian|is\s+the\s+custodian/i, "custodian"],
+  [/(?:assets|securities|accounts?)\s+(?:listed\s+in\s+this\s+statement\s+)?(?:are|is)\s+held\s+(?:by|at|with)|held\s+in\s+custody\s+(?:by|at)/i, "custodian"]
+];
+
+// ---------- PDF text ----------
+// Lines rebuilt from item positions: same baseline, left to right.
+async function readPdf(data, onPage) {
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const tc = await page.getTextContent();
+    const rows = new Map();
+    for (const it of tc.items) {
+      if (!it.str) continue;
+      const y = Math.round(it.transform[5] / 3) * 3;
+      if (!rows.has(y)) rows.set(y, []);
+      const size = Math.hypot(it.transform[0], it.transform[1]) || it.height || 10;
+      rows.get(y).push({ x: it.transform[4], w: it.width || 0, size, s: it.str });
+    }
+    // Words are rebuilt from spacing: some statements set every letter as its own item.
+    const joinRow = (items) => {
+      let out = "", end = null;
+      for (const i of items.sort((a, b) => a.x - b.x)) {
+        if (!i.s.trim()) { out += " "; end = i.x + i.w; continue; }
+        if (end != null && i.x - end > i.size * 0.22) out += " ";
+        out += i.s; end = i.x + i.w;
+      }
+      return out.replace(/\s+/g, " ").trim();
+    };
+    const lines = [...rows.keys()].sort((a, b) => b - a).map(y => joinRow(rows.get(y))).filter(Boolean);
+    // Invisible text (render mode 3) is an OCR layer laid over a scanned image.
+    let ocr = false, images = 0;
+    try {
+      const ops = await page.getOperatorList(), O = pdfjsLib.OPS;
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        const fn = ops.fnArray[i];
+        if (fn === O.setTextRenderingMode && ops.argsArray[i][0] === 3) ocr = true;
+        if (fn === O.paintImageXObject || fn === O.paintJpegXObject || fn === O.paintInlineImageXObject) images++;
+      }
+    } catch { /* operator list unavailable: treat as a text page */ }
+    const text = lines.join("\n");
+    const blank = /intentionally\s+(?:left\s+)?blank|left\s+intentionally\s+blank/i.test(text);
+    const lowText = text.replace(/\s/g, "").length < 40;
+    pages.push({ n, lines, text, ocr, blank, scanned: !blank && (ocr || (lowText && images > 0)), source: "text" });
+    onPage && onPage(n, pdf.numPages);
+  }
+  return { pdf, pages };
+}
+async function renderPage(pdf, n) {
+  const page = await pdf.getPage(n);
+  const vp = page.getViewport({ scale: 2 });
+  const canvas = document.createElement("canvas");
+  canvas.width = vp.width; canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+  return new Promise((res, rej) => canvas.toBlob(b => b ? res(b) : rej(new Error("render")), "image/jpeg", 0.88));
+}
+
+// One searchable index per page.
+function indexPages(pages) {
+  return pages.map(p => ({ n: p.n, raw: p.text, upper: p.text.toUpperCase(), flat: alnum(p.text), wds: words(p.text), scanned: p.scanned, source: p.source }));
+}
+const pagesWith = (idx, test) => idx.filter(test).map(p => p.n);
+
+// ---------- account numbers ----------
+const MONTHS = /^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/i;
+const isMasked = (s) => /[*]|X{2,}|x{2,}|^x\d/i.test(str(s)) || /^(?:ending|ends)\b/i.test(str(s));
+// Trailing visible characters of a masked number: "****-*054" -> "054", "XXX-XX452-8" -> "4528".
+function visibleTail(s) {
+  const t = str(s).toUpperCase();
+  const last = Math.max(t.lastIndexOf("*"), t.lastIndexOf("X"));
+  return alnum(t.slice(last + 1));
+}
+function numberTokens(tokens) {
+  const out = [];
+  for (const t of tokens) {
+    if (!/^[0-9A-Z*Xx#-]+$/.test(t) || /[a-wyz]/.test(t) || MONTHS.test(t) && !/\d/.test(t)) break;
+    if (/^(?:PAGE|PLAN|ID|OF)$/i.test(t)) break;
+    out.push(t);
+    if (out.length >= 6) break;
+  }
+  const s = out.join(" ").replace(/^#\s*/, "").trim();
+  const digits = (s.match(/\d/g) || []).length;
+  return digits >= 3 && (digits >= 6 || isMasked(s) || /\d-\d/.test(s) || /[A-Z]\d/.test(s)) ? s : "";
+}
+// A token that looks like an account number on its own: grouped digits, a long digit run, or a masked tail.
+const ACCT_SHAPE = /^(?:\d{3,}-[\d-]{3,}\d|\d{7,}|[A-Z]\d{2}-\d{5,}|[*X]{2,}[-*X]*\d{3,}[-\d]*)$/;
+const DATEISH = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$|^\d{5}-\d{4}$|^\d{3}-\d{3}-\d{4}$/;
+// Numbers printed after an account label, with the label's page.
+function findAccountNumbers(pages) {
+  const found = new Map();
+  const LABEL = /\b(?:Account|Acct|Portfolio|Contract|Policy)\s*(?:Number|No\.?|#)\s*[:.]?\s*/gi;
+  for (const p of pages) {
+    p.lines.forEach((line, i) => {
+      let m; LABEL.lastIndex = 0;
+      while ((m = LABEL.exec(line))) {
+        let num = numberTokens(line.slice(m.index + m[0].length).split(/\s+/).filter(Boolean));
+        // Label with its value a line or two below ("Account Number  Statement Period" … "9559-9054 August 1-31").
+        for (let k = 1; !num && k <= 3 && p.lines[i + k]; k++) {
+          const tok = p.lines[i + k].split(/\s+/).find(t => ACCT_SHAPE.test(t) && !DATEISH.test(t));
+          if (tok) num = tok;
+        }
+        if (!num) continue;
+        const key = alnum(num);
+        if (!found.has(key)) found.set(key, { number: num, key, pages: new Set(), masked: isMasked(num) });
+        found.get(key).pages.add(p.n);
+      }
+      // "Individual brokerage account--XXXX0219" style.
+      const dash = /\baccount\s*[-–—]{1,2}\s*((?:[X*]{2,}|x{2,})[-\s]?\d{3,})/gi;
+      while ((m = dash.exec(line))) {
+        const num = m[1], key = alnum(num);
+        if (!found.has(key)) found.set(key, { number: num, key, pages: new Set(), masked: true });
+        found.get(key).pages.add(p.n);
+      }
+    });
+  }
+  return [...found.values()].map(f => ({ ...f, pages: [...f.pages].sort((a, b) => a - b) }));
+}
+function sameAccount(a, b) {
+  const ka = alnum(a), kb = alnum(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  const ta = isMasked(a) ? visibleTail(a) : "", tb = isMasked(b) ? visibleTail(b) : "";
+  if (ta && ta.length >= 3 && kb.endsWith(ta)) return true;
+  if (tb && tb.length >= 3 && ka.endsWith(tb)) return true;
+  // Same number with a different count of leading zeros or a trailing suffix.
+  const za = ka.replace(/^0+/, ""), zb = kb.replace(/^0+/, "");
+  return za.length >= 6 && zb.length >= 6 && (za.startsWith(zb) || zb.startsWith(za));
+}
+
+// ---------- firms ----------
+function knownFirmsIn(text) {
+  return KNOWN_FIRMS.filter(([, re]) => re.test(text)).map(([name]) => name);
+}
+// The clearing / carrying / custodian firm, from wording near a cue.
+function findClearing(idx) {
+  const hits = [];
+  for (const p of idx) {
+    const flat = p.raw.replace(/\s+/g, " ");
+    for (const [cue, kind] of CLEARING_CUES) {
+      const re = new RegExp(cue.source, "gi");
+      let m;
+      while ((m = re.exec(flat))) {
+        const start = Math.max(0, m.index - 160), end = Math.min(flat.length, m.index + m[0].length + 160);
+        const win = flat.slice(start, end);
+        // Prefer the known firm nearest the cue.
+        let best = null;
+        for (const [name, fre] of KNOWN_FIRMS) {
+          const g = new RegExp(fre.source, fre.flags.includes("i") ? "gi" : "g");
+          let fm;
+          while ((fm = g.exec(win))) {
+            const dist = Math.abs((start + fm.index) - m.index);
+            if (!best || dist < best.dist) best = { name, dist };
+          }
+        }
+        if (best && best.dist < 170) {
+          const qs = Math.max(0, m.index - 110), qe = Math.min(flat.length, m.index + m[0].length + 110);
+          hits.push({ name: best.name, kind, page: p.n, quote: flat.slice(qs, qe).trim() });
+        }
+      }
+    }
+  }
+  const rank = { clearing: 0, carrying: 1, custodian: 2 };
+  hits.sort((a, b) => rank[a.kind] - rank[b.kind] || a.page - b.page);
+  return hits;
+}
+const firmKey = (s) => words(s).replace(/\b(LLC|L L C|INC|INCORPORATED|CORP|CORPORATION|CO|COMPANY|LP|L P|THE|AND|&|MEMBER|SIPC|FINRA|NYSE)\b/g, " ").replace(/\s+/g, " ").trim();
+function sameFirm(a, b) {
+  if (!str(a) || !str(b)) return false;
+  const ka = firmKey(a), kb = firmKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb || ka.includes(kb) || kb.includes(ka)) return true;
+  const known = (s) => KNOWN_FIRMS.filter(([, re]) => re.test(s)).map(([n]) => n);
+  const na = known(a), nb = known(b);
+  if (na.some(n => nb.includes(n))) return true;
+  const ta = new Set(ka.split(" ")), tb = new Set(kb.split(" "));
+  const inter = [...ta].filter(t => tb.has(t) && t.length > 2).length;
+  return inter / Math.min(ta.size, tb.size) >= 0.6;
+}
+
+// ---------- DTCC directory ----------
+// Entries whose own name (before any "/sub-account" suffix) is this firm, best first.
+function directoryLookup(name) {
+  const dir = typeof DTCC_DIRECTORY !== "undefined" ? DTCC_DIRECTORY : { acats: [], dtc: [] };
+  const names = [str(name), ...KNOWN_FIRMS.filter(([, re]) => re.test(str(name))).map(([n]) => n)];
+  const keys = [...new Set(names.map(firmKey).filter(k => k.length >= 3))];
+  const score = (entryName) => {
+    const base = entryName.split("/")[0], k = firmKey(base), sub = entryName.includes("/");
+    let best = 0;
+    for (const key of keys) {
+      if (k === key) best = Math.max(best, sub ? 2 : 3);
+      else if (key.length >= 8 && k.length >= 8 && (k.startsWith(key + " ") || key.startsWith(k + " "))) best = Math.max(best, sub ? 0.5 : 1);
+    }
+    return best;
+  };
+  const rank = (list, map) => list.map(map).map(e => ({ ...e, score: score(e.name) })).filter(e => e.score > 0).sort((a, b) => b.score - a.score || a.number.localeCompare(b.number));
+  const acats = rank(dir.acats, ([number, nm, loc]) => ({ number, name: nm, location: loc }));
+  const dtc = rank(dir.dtc, ([number, nm]) => ({ number, name: nm }));
+  return { acats, dtc };
+}
+function directorySearch(q, limit = 40) {
+  const dir = typeof DTCC_DIRECTORY !== "undefined" ? DTCC_DIRECTORY : { acats: [], dtc: [] };
+  const t = str(q).toUpperCase(); if (t.length < 2) return [];
+  const acatNums = new Set(dir.acats.map(a => a[0]));
+  const out = new Map();
+  for (const [n, nm, loc] of dir.acats) if (nm.toUpperCase().includes(t) || n === t.padStart(4, "0")) out.set(n + nm, { number: n, name: nm, location: loc, acats: true, dtc: dir.dtc.some(d => d[0] === n) });
+  for (const [n, nm] of dir.dtc) if ((nm.toUpperCase().includes(t) || n === t.padStart(4, "0")) && !out.has(n + nm)) out.set(n + nm, { number: n, name: nm, location: "", acats: acatNums.has(n), dtc: true });
+  return [...out.values()].sort((a, b) => (b.acats - a.acats) || a.name.localeCompare(b.name)).slice(0, limit);
+}
+
+// ---------- account type from the registration ----------
+function typeFromRegistration(reg) {
+  const r = " " + str(reg).toUpperCase().replace(/[^A-Z0-9()&]+/g, " ") + " ";
+  if (/ ROTH /.test(r) && / (BENE|BENEFICIARY|INHERITED|INH|DECD|DECEASED) /.test(r)) return "Roth Beneficiary IRA";
+  if (/ (BENE|BENEFICIARY|INHERITED|INH) /.test(r) && / IRA /.test(r)) return "Beneficiary IRA";
+  if (/ ROTH /.test(r)) return "Roth IRA";
+  if (/ SEP /.test(r)) return "SEP IRA";
+  if (/ SIMPLE /.test(r)) return "SIMPLE IRA";
+  if (/ (IRA|ROLLOVER|IRRA) /.test(r)) return "Traditional or Rollover IRA";
+  if (/ 403 ?\(?B\)?/.test(r)) return "403(b)7";
+  if (/ 401 ?\(?K\)?| PROFIT SHARING | PENSION PLAN /.test(r)) return "Qualified Plan";
+  if (/ (UTMA|UGMA) /.test(r)) return "UGMA/UTMA";
+  if (/ (COVERDELL|ESA) /.test(r)) return "Coverdell ESA";
+  if (/ (ESTATE OF|EST OF|EXECUTOR|EXECUTRIX|EXEC|ADMINISTRATOR|PERSONAL REPRESENTATIVE) /.test(r)) return "Estate";
+  if (/ (TTEE|TTEES|TRUSTEE|TRUSTEES|TRUST|TR|REV TR|U ?A|UAD|UTD|DTD) /.test(r)) return "Trust";
+  if (/ (LLC|INC|CORP|CORPORATION|PARTNERSHIP|LP|LLP|FOUNDATION|ASSOCIATION) /.test(r)) return "Corporate/Business";
+  if (/ (JTWROS|JT TEN|JT|JOINT|TEN COM|TENANTS|TEN ENT|COMM PROP|COMMUNITY PROPERTY|WROS|&) /.test(r)) return "Joint";
+  if (/ (INDIVIDUAL|TOD|IND) /.test(r)) return "Individual";
+  return "";
+}
+
+// ---------- CUSIP ----------
+function cusipValid(c) {
+  const s = alnum(c);
+  if (s.length !== 9) return false;
+  let sum = 0;
+  for (let i = 0; i < 8; i++) {
+    const ch = s[i];
+    let v = /\d/.test(ch) ? +ch : /[A-Z]/.test(ch) ? ch.charCodeAt(0) - 55 : ch === "*" ? 36 : ch === "@" ? 37 : 38;
+    if (i % 2) v *= 2;
+    sum += Math.floor(v / 10) + (v % 10);
+  }
+  return (10 - (sum % 10)) % 10 === +s[8];
+}
+
+// ---------- values in text ----------
+const money = (n) => Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function moneyIn(idx, n, pages) {
+  if (n == null || !isFinite(n)) return null;
+  const a = money(Math.abs(n)), b = a.replace(/,/g, "");
+  return idx.some(p => (!pages || pages.includes(p.n)) && (p.raw.includes(a) || p.raw.includes(b)));
+}
+function qtyIn(idx, q, pages) {
+  const s = str(q).replace(/^-/, "");
+  if (!s) return null;
+  const forms = new Set([s, s.replace(/,/g, "")]);
+  const num = Number(s.replace(/,/g, ""));
+  if (isFinite(num)) for (const d of [0, 1, 2, 3, 4, 5]) { const f = num.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); if (Number(f.replace(/,/g, "")) === num) { forms.add(f); forms.add(f.replace(/,/g, "")); } }
+  return idx.some(p => (!pages || pages.includes(p.n)) && [...forms].some(f => p.raw.includes(f)));
+}
+function wordIn(idx, w, pages) {
+  const t = str(w).toUpperCase();
+  if (!t) return null;
+  const re = new RegExp("(^|[^A-Z0-9])" + t.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&") + "([^A-Z0-9]|$)");
+  return idx.some(p => (!pages || pages.includes(p.n)) && re.test(p.upper));
+}
+function regIn(idx, reg) {
+  const segs = str(reg).split("|").map(words).map(s => s.trim()).filter(Boolean);
+  if (!segs.length) return null;
+  return segs.every(s => idx.some(p => p.wds.includes(" " + s + " ")));
+}
+
+// ---------- checks ----------
+let flagSeq = 0;
+function flag(scope, level, text, src = "Rules check") { return { id: scope + ":" + hash(text), scope, level, text, src }; }
+function hash(s) { let h = 5381; for (const c of String(s)) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return (h >>> 0).toString(36); }
+const near = (a, b) => Math.abs(a - b) <= Math.max(1, Math.abs(b) * 0.0005);
+
+// Everything the rules can say about one read. Returns the record with flags attached.
+function checkRecord(rec, pages) {
+  const idx = indexPages(pages);
+  const textPages = idx.filter(p => p.source === "text" && !p.scanned);
+  const hf = [];
+  const anyScan = idx.some(p => p.scanned);
+  if (anyScan) hf.push(flag("h", "info", `${idx.filter(p => p.scanned).length} of ${idx.length} pages are scanned images, so Claude read them from the images. The checks against the statement's own text are limited on those pages.`));
+
+  // Firms
+  const rulesClearing = findClearing(textPages.length ? textPages : idx);
+  rec.rulesClearing = rulesClearing[0] || null;
+  const cf = rec.clearingFirm;
+  if (!cf || !str(cf.name)) {
+    hf.push(rulesClearing.length
+      ? flag("h", "warn", `Claude didn't find a clearing firm, but the statement mentions ${rulesClearing[0].name} (${rulesClearing[0].kind}, p.${rulesClearing[0].page}). Confirm which firm clears the account.`)
+      : flag("h", "bad", "The statement doesn't name a clearing or carrying firm. Confirm it with the delivering firm before submitting the transfer."));
+  } else {
+    if (cf.selfClearing) hf.push(flag("h", "warn", `The statement doesn't name a separate clearing firm. It names ${cf.name} as holding the account, so it likely clears its own accounts. Confirm before submitting.`, "Claude"));
+    if (rulesClearing.length && !rulesClearing.some(h => sameFirm(h.name, cf.name)))
+      hf.push(flag("h", "warn", `Claude named ${cf.name} as the clearing firm, but the statement's wording points to ${rulesClearing[0].name} (p.${rulesClearing[0].page}): "${rulesClearing[0].quote}"`));
+    if (!idx.some(p => p.wds.includes(" " + firmKey(cf.name).split(" ").slice(0, 3).join(" ") + " ")) && !knownFirmsIn(pages.map(p => p.text).join("\n")).some(n => sameFirm(n, cf.name)))
+      hf.push(flag("h", "warn", `"${cf.name}" isn't written that way in the statement. Check the clearing firm's name.`));
+  }
+  const df = rec.deliveringFirm;
+  if (!df || !str(df.name)) hf.push(flag("h", "bad", "No delivering firm was identified."));
+  else if (cf && str(cf.name) && sameFirm(df.name, cf.name) === false && /fund|funds|index|etf|portfolio/i.test(df.name))
+    hf.push(flag("h", "warn", `The delivering firm "${df.name}" looks like a fund name. Check it.`));
+
+  // Accounts the rules found that Claude didn't list.
+  const ruleNums = findAccountNumbers(pages);
+  for (const r of ruleNums) {
+    if (!rec.accounts.some(a => sameAccount(a.accountNumber, r.number)))
+      hf.push(flag("h", "warn", `The statement shows account number ${r.number} (p.${r.pages.slice(0, 3).join(", p.")}), which isn't in the list below. Check whether it's a separate account.`));
+  }
+
+  for (const a of rec.accounts) {
+    const af = [];
+    const sc = "a" + alnum(a.accountNumber || a.key);
+    const pr = a.firstPage && a.lastPage ? range(a.firstPage, a.lastPage) : null;
+    const onScan = pr ? idx.filter(p => pr.includes(p.n)).every(p => p.scanned) : anyScan;
+
+    // Account number
+    if (!str(a.accountNumber)) af.push(flag(sc, "bad", "No account number."));
+    else {
+      if (isMasked(a.accountNumber)) af.push(flag(sc, "bad", `The statement prints only part of the account number (${a.accountNumber}). Get the full number from the client or the delivering firm.`));
+      else if (!onScan && !idx.some(p => p.flat.includes(alnum(a.accountNumber))))
+        af.push(flag(sc, "bad", `Account number ${a.accountNumber} isn't in the statement's text. Check every digit against the statement.`));
+      const ruleHit = ruleNums.find(r => sameAccount(r.number, a.accountNumber) && !r.masked);
+      if (ruleHit && isMasked(a.accountNumber)) af.push(flag(sc, "warn", `The full number may be ${ruleHit.number} (p.${ruleHit.pages[0]}). Check it.`));
+    }
+    // Registration
+    if (!str(a.registration)) af.push(flag(sc, "bad", "No registration. The receiving account's title has to match it exactly."));
+    else if (!onScan && regIn(idx, a.registration) === false) af.push(flag(sc, "warn", `The registration "${a.registration}" isn't printed exactly that way in the statement. Check the wording.`));
+    // Type
+    const rt = typeFromRegistration(a.registration);
+    if (!a.accountType) af.push(flag(sc, "bad", "Account type not set."));
+    else if (rt && rt !== a.accountType && !(rt === "Individual" && a.accountType === "Joint") && !NON_ACAT_TYPES.has(a.accountType))
+      af.push(flag(sc, "warn", `The registration reads like ${rt}, but the account type is ${a.accountType}. Check which is right.`));
+    // ACAT eligibility
+    if (NON_ACAT_TYPES.has(a.accountType) || a.acatEligible === "no")
+      af.push(flag(sc, "bad", `This account likely can't move by ACAT${a.acatNote ? ": " + a.acatNote : "."} Confirm how it transfers (for an annuity, the carrier's exchange process).`, a.acatNote ? "Claude" : "Rules check"));
+    else if (a.acatEligible === "check") af.push(flag(sc, "warn", `Check whether this account can move by ACAT${a.acatNote ? ": " + a.acatNote : "."}`, "Claude"));
+    if (a.managed) af.push(flag(sc, "info", `Managed or advisory account${a.program ? " (" + a.program + ")" : ""}. The positions move; the advisory program and its share classes may not.`, "Claude"));
+    // Values
+    if (a.endingValue != null && !onScan && moneyIn(idx, a.endingValue) === false)
+      af.push(flag(sc, "warn", `The account value $${money(a.endingValue)} isn't in the statement's text. Check it.`));
+    const pos = a.positions || [];
+    if (a.positionsRead && pos.length) {
+      const total = pos.reduce((s, x) => s + (Number(x.value) || 0), 0);
+      if (a.endingValue != null && !near(total, a.endingValue))
+        af.push(flag(sc, "warn", `Positions add up to $${money(total)}, but the account value is $${money(a.endingValue)} (${total < a.endingValue ? "$" + money(a.endingValue - total) + " short" : "$" + money(total - a.endingValue) + " over"}). A position may be missing or misread, or the value includes accrued interest.`));
+      const missing = [];
+      for (const x of pos) {
+        x.check = {};
+        if (onScan) continue;
+        if (x.symbol) x.check.symbol = wordIn(idx, x.symbol, pr);
+        if (x.cusip) x.check.cusip = cusipValid(x.cusip) && idx.some(p => p.flat.includes(alnum(x.cusip)));
+        if (str(x.quantity)) x.check.quantity = qtyIn(idx, x.quantity, pr);
+        if (x.value != null) x.check.value = moneyIn(idx, x.value, pr);
+        if (Object.values(x.check).some(v => v === false)) missing.push(x.symbol || x.description);
+      }
+      if (missing.length) af.push(flag(sc, "warn", `${missing.length} position${missing.length > 1 ? "s have" : " has"} a value not found in the statement's text: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}. Check the highlighted cells.`));
+      const badCusip = pos.filter(x => x.cusip && !cusipValid(x.cusip));
+      if (badCusip.length) af.push(flag(sc, "warn", `CUSIP check digit fails for ${badCusip.map(x => x.cusip).join(", ")}. One character is probably misread.`));
+      // Position issues, grouped
+      const group = (kind) => pos.filter(x => x.issue === kind);
+      const sweep = group("sweep"); if (sweep.length) af.push(flag(sc, "info", `Cash sweep or money market (${sweep.map(x => x.symbol || x.description).join(", ")}) usually moves as cash.`, "Claude"));
+      const prop = group("proprietary"); if (prop.length) af.push(flag(sc, "warn", `Proprietary to the delivering firm, may not be held at LPL: ${prop.map(x => x.symbol || x.description).join(", ")}.`, "Claude"));
+      const alt = pos.filter(x => ["alternative", "annuity", "not DTC eligible"].includes(x.issue)); if (alt.length) af.push(flag(sc, "bad", `May not transfer in kind: ${alt.map(x => (x.symbol || x.description) + (x.issueNote ? " (" + x.issueNote + ")" : "")).join("; ")}.`, "Claude"));
+      const frac = pos.filter(x => ["stock", "etf"].includes(x.assetClass) && /\.\d*[1-9]/.test(str(x.quantity)));
+      if (frac.length) af.push(flag(sc, "warn", `Fractional shares of ${frac.map(x => x.symbol || x.description).join(", ")} are usually sold at transfer.`));
+      const other = pos.filter(x => ["foreign", "other"].includes(x.issue)); if (other.length) af.push(flag(sc, "warn", other.map(x => (x.symbol || x.description) + ": " + (x.issueNote || x.issue)).join("; "), "Claude"));
+    } else if (a.positionsRead && !pos.length && !NON_ACAT_TYPES.has(a.accountType)) {
+      af.push(flag(sc, "warn", "No positions were found for this account. Check the statement's holdings pages."));
+    }
+    const cash = a.cashBalance != null ? Number(a.cashBalance) : null;
+    if ((cash != null && cash < 0) || pos.some(x => x.assetClass === "cash" && Number(x.value) < 0))
+      af.push(flag(sc, "bad", "The account has a debit (negative cash) balance. It has to be settled before or at the transfer."));
+    if (onScan) af.push(flag(sc, "info", "This account was read from scanned pages. Check its values against the statement closely."));
+    a.flags = af;
+  }
+  rec.flags = hf;
+  return rec;
+}
+const range = (a, b) => { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; };
+
+return { ACCOUNT_TYPES, NON_ACAT_TYPES, TRANSFER_TYPES, KNOWN_FIRMS, str, alnum, money, readPdf, renderPage, indexPages,
+  findAccountNumbers, findClearing, sameAccount, sameFirm, firmKey, typeFromRegistration, cusipValid, isMasked, checkRecord, flag, hash, range,
+  directoryLookup, directorySearch };
+})();
+window.ACAT_RULES = ACAT;
+
+// ===================================================================
+// Page
+// ===================================================================
+(() => {
+"use strict";
+const { str, alnum, money } = ACAT;
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
+  return n;
+};
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200); }
+async function copyText(text, label) {
+  try { await navigator.clipboard.writeText(text); toast(label ? `Copied ${label}` : "Copied"); }
+  catch { toast("Copying isn't available here. Select the text and press Ctrl+C."); }
+}
+const copyBtn = (getText, label) => el("button", { class: "copy", type: "button", text: "Copy", "aria-label": "Copy " + (label || ""), onclick: (e) => { e.preventDefault(); copyText(typeof getText === "function" ? getText() : getText, label); } });
+const when = (iso) => iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+const moneyOr = (n) => n == null || n === "" || !isFinite(n) ? "—" : (n < 0 ? "-$" : "$") + money(Math.abs(n));
+const typeLabel = (v) => (ACAT.TRANSFER_TYPES.find(t => t[0] === v) || [, v])[1];
+
+// Viewers can't write shared data; controls that save show this beside them.
+const needChip = () => el("span", { class: "chip warn", text: "Contributor access needed", title: "Viewers can't save to the team log or change the clearing firm table. Ask the page owner for Contributor access in the Share menu." });
+// Account numbers show only their last 4 characters until someone clicks Show.
+let revealed = new Set(), revealedFor = null;
+const maskNum = (s) => { const t = str(s); let keep = 4, out = ""; for (let k = t.length - 1; k >= 0; k--) { const c = t[k]; out = (/[0-9A-Za-z]/.test(c) ? (keep-- > 0 ? c : "•") : c) + out; } return out; };
+const ACCT_IN_TEXT = /\b[A-Z]?\d[\dA-Z]*(?:[ -]\d[\dA-Z]*)+\b|\b\d{7,}\b/g;
+const maskText = (s) => String(s == null ? "" : s).replace(ACCT_IN_TEXT, m => (m.match(/\d/g) || []).length >= 6 ? maskNum(m) : m);
+const showBtn = (key) => el("button", { class: "copy", type: "button", text: "Show", "aria-label": "Show the full account number", onclick: (e) => { e.preventDefault(); revealed.add(key); renderRecordSoon(); } });
+
+// ---------- capabilities ----------
+let db = null, user = null, sample = null, sampleLimits = null, downloads = null, myId = null;
+let canWrite = null;
+let firms = [];          // clearing-firm table rows
+let records = [];        // team log
+let current = null;      // { id|null, data, dirty }
+let readCtl = null;
+
+// ---------- Claude ----------
+const TYPES_TEXT = ACAT.ACCOUNT_TYPES.map(t => `"${t}"`).join(", ");
+const PROMPT_ACCOUNTS = (text, part) => `You read brokerage and custodial account statements for a team that transfers accounts to LPL Financial by ACAT. Below is the text layer of a client's statement${part ? ` (part ${part})` : ""}, page by page; "--- Page N ---" starts PDF page N. Table columns in the text are often out of order, so read carefully.
+
+Reply with only a JSON object:
+{
+  "statementPeriod": "as printed, e.g. May 1, 2026 to May 31, 2026",
+  "deliveringFirm": {"name": "", "quote": "", "page": 0},
+  "clearingFirm": {"name": "", "quote": "", "page": 0, "selfClearing": false} or null,
+  "dtcNumber": {"value": "", "quote": "", "page": 0} or null,
+  "accounts": [{
+    "accountNumber": "",
+    "accountNumberPage": 0,
+    "registration": "",
+    "registrationPage": 0,
+    "accountType": "",
+    "program": "",
+    "managed": false,
+    "endingValue": 0,
+    "firstPage": 0,
+    "lastPage": 0,
+    "acatEligible": "yes",
+    "acatNote": ""
+  }],
+  "notes": [""]
+}
+
+Rules:
+- deliveringFirm: the broker-dealer or custodian whose statement this is and that holds the accounts (for example the introducing broker-dealer). Never a fund company or a security that appears in the holdings, and never the client's own advisor firm.
+- clearingFirm: the firm the statement says clears, carries or holds the brokerage accounts. Quote the exact sentence that says so. If the statement names no separate clearing or carrying firm but says a firm is the custodian or holds the account itself, give that firm with "selfClearing": true and quote that sentence. If nothing in the statement says it, null. Never use outside knowledge or holdings names.
+- dtcNumber: only if a DTC or clearing number is printed; otherwise null.
+- accounts: every separate account, contract or policy in the statement, including ones that cannot move by ACAT (annuities, insurance, financial planning services, bank deposit accounts). One entry per account; continuation pages belong to the same account.
+- accountNumber: exactly as printed, keeping spaces, dashes and masking characters. If only a masked form is printed, give it as printed.
+- registration: the account title exactly as printed, including custodian and trustee wording and dates (e.g. "LINDA L COAN AS TTEE | OF THE LINDA L COAN REV TR | U/A DTD 8-1-13"). Join separate printed lines with " | ". Do not include the mailing address.
+- accountType: one of ${TYPES_TEXT}. Use "Joint" for any joint, community property or tenancy registration.
+- program: the product or program name as printed (e.g. "Strategic Portfolio Service Advantage"). managed: true for advisory, managed or wrap accounts.
+- endingValue: the account's ending market value as a number, or null.
+- firstPage, lastPage: the PDF pages of that account's own section.
+- acatEligible: "no" for annuities, insurance, planning services, bank products and employer plans held by a plan recordkeeper; "check" if unsure; otherwise "yes". acatNote: one short sentence why, when not "yes".
+- notes: at most 5 short facts a transfer specialist must know (debit balances, pending items, accounts closing). Empty list if none.
+
+STATEMENT TEXT:
+${text}`;
+
+const PROMPT_POSITIONS = (acct, text) => `You read a brokerage statement for an ACAT transfer team. Below is the text of the pages for ONE account (PDF pages ${acct.firstPage}-${acct.lastPage}); "--- Page N ---" starts PDF page N. Table columns are often out of order in this text, so match each description with its own numbers carefully (quantity x price should equal value).
+
+Account: ${acct.accountNumber}  ${acct.registration}
+
+List every position this account holds at the end of the statement period, including cash, bank sweep and money market balances. Do not list transactions or activity.
+
+Reply with only a JSON object:
+{
+  "cashBalance": 0,
+  "positions": [{
+    "description": "",
+    "symbol": "",
+    "cusip": "",
+    "quantity": "",
+    "price": 0,
+    "value": 0,
+    "assetClass": "cash",
+    "page": 0,
+    "issue": null,
+    "issueNote": ""
+  }]
+}
+
+Rules:
+- Copy description, symbol, CUSIP and quantity exactly as printed. quantity is a string as printed (e.g. "1,241.448"). Leave symbol or cusip "" when not printed; never invent one.
+- price and value are numbers (no $ or commas); value is the position's ending market value; negative for a debit.
+- assetClass: one of "cash", "stock", "etf", "mutual fund", "bond", "cd", "option", "annuity", "alternative", "other".
+- issue: null, or one of "sweep" (cash sweep, bank deposit program or core money market that moves as cash), "proprietary" (a fund or product of the delivering firm or its affiliates that another firm may not hold), "alternative" (non-traded REIT, limited partnership, private fund, structured product not held at DTC), "annuity", "not DTC eligible", "foreign", "other". issueNote: one short phrase when issue is set.
+- cashBalance: the account's cash balance as a number (negative for a debit), or null.
+
+ACCOUNT PAGES:
+${text}`;
+
+const PROMPT_TRANSCRIBE = (from, to, total) => `These images are pages ${from} to ${to} of a ${total}-page brokerage account statement. Transcribe all text on each page exactly as printed, in reading order. Keep account numbers, names, registrations, symbols, CUSIPs, quantities and dollar amounts character for character. For tables, write one row per line with its columns in order, separated by " | ". Start each page with "--- Page N ---" using these numbers: ${range(from, to).join(", ")}. Reply with only the transcription.`;
+function range(a, b) { return ACAT.range(a, b); }
+
+function claudeMsg(e) {
+  switch (e && e.code) {
+    case "not_granted": return "Claude wasn't allowed for this page. Allow it when asked, or enter the account by hand.";
+    case "rate_limited": return "Claude is busy or you've reached a usage limit. Wait a few minutes and try again.";
+    case "invalid_json": return "Claude's answer couldn't be read. Try again; if it keeps failing, the statement may be too long or unusual.";
+    case "sampling_disabled": return "Claude is turned off for your account in this view.";
+    case "images_unavailable": case "image_rejected": return "This view can't send the scanned pages to Claude.";
+    case "cancelled": return "Stopped.";
+    default: return "Claude couldn't finish reading the statement. Try again.";
+  }
+}
+
+// ---------- reading ----------
+const STEP_NAMES = ["Reading the PDF", "Reading scanned pages", "Listing the accounts", "Reading positions", "Checking against the statement"];
+function steps(active, note) {
+  const ul = $("steps"); ul.replaceChildren();
+  STEP_NAMES.forEach((s, i) => ul.append(el("li", { class: i < active ? "done" : i === active ? "on" : "", text: s + (i === active && note ? ` (${note})` : "") })));
+}
+function showError(msg) { $("readErr").textContent = msg; $("readErr").hidden = !msg; }
+
+async function handleFile(file) {
+  if (!file) return;
+  if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { showError("Choose a PDF statement."); return; }
+  if (current && current.dirty && !confirmDiscard()) return;
+  if (!sample) { $("noClaude").hidden = false; return; }
+  showError(""); readCtl = new AbortController();
+  const signal = readCtl.signal;
+  $("status").hidden = false; $("record").hidden = true;
+  try {
+    steps(0);
+    const { pdf, pages } = await ACAT.readPdf(await file.arrayBuffer(), (n, t) => { $("statusNote").textContent = `page ${n} of ${t}`; });
+    $("statusNote").textContent = "";
+    if (signal.aborted) throw { code: "cancelled" };
+
+    const run = pool(3);
+    const opts = (extra) => ({ signal, cache: CACHE, ...extra });
+
+    // Scanned pages: Claude transcribes them from images, several batches at once.
+    const scanned = pages.filter(p => p.scanned);
+    if (scanned.length) {
+      if (!sampleLimits || !sampleLimits.images) throw { code: "images_unavailable" };
+      const per = Math.max(1, Math.min(sampleLimits.images.maxCount || 1, 8));
+      const batches = [];
+      for (let i = 0; i < scanned.length; i += per) batches.push(scanned.slice(i, i + per));
+      let left = batches.length;
+      steps(1, `${scanned.length} pages`);
+      await Promise.all(batches.map(batch => run(async () => {
+        const images = [];
+        for (const p of batch) images.push(await ACAT.renderPage(pdf, p.n));
+        const { text } = await sample(PROMPT_TRANSCRIBE(batch[0].n, batch[batch.length - 1].n, pages.length), opts({ images }));
+        const parts = text.split(/^--- Page (\d+) ---\s*$/m);
+        for (let k = 1; k < parts.length; k += 2) {
+          const p = pages.find(x => x.n === +parts[k]);
+          if (p) { p.text = parts[k + 1].trim(); p.lines = p.text.split("\n"); p.source = "image"; }
+        }
+        left--; steps(1, left ? `${left} batch${left > 1 ? "es" : ""} left` : "");
+      })));
+    }
+
+    const maxBytes = Math.min((sampleLimits && sampleLimits.maxPromptBytes) || 262144, 262144) - 12000;
+    const pageText = (a, b) => pages.filter(p => p.n >= a && p.n <= b).map(p => `--- Page ${p.n} ---\n${p.text}`).join("\n").slice(0, maxBytes);
+    const readPositions = (number, registration, first, last) => run(() => sample.json(PROMPT_POSITIONS({ accountNumber: number, registration, firstPage: first, lastPage: last }, pageText(first, last)), opts()));
+
+    // Accounts, in parts if the statement is long. Queued first so it starts first.
+    steps(2);
+    const chunks = []; let cur = "";
+    for (const p of pages) {
+      const block = `--- Page ${p.n} ---\n${p.text}\n`;
+      if (new Blob([cur + block]).size > maxBytes && cur) { chunks.push(cur); cur = ""; }
+      cur += block;
+    }
+    if (cur) chunks.push(cur);
+    const accountsRead = Promise.all(chunks.map((c, i) => run(() => sample.json(PROMPT_ACCOUNTS(c, chunks.length > 1 ? `${i + 1} of ${chunks.length}` : ""), opts()))));
+
+    // Meanwhile, positions for the accounts the rules can already see, each over its own pages.
+    // A result is used only if Claude's account list agrees with it (below); otherwise it's read again.
+    const early = guessAccounts(pages).slice(0, 8).map(g => {
+      const promise = readPositions(g.number, "", g.first, g.last);
+      promise.catch(() => {});
+      return { ...g, promise };
+    });
+
+    let rec = null;
+    for (const part of await accountsRead) rec = mergeRead(rec, part);
+    rec = normalizeRead(rec, file.name, pages.length);
+
+    const todo = rec.accounts.filter(a => !ACAT.NON_ACAT_TYPES.has(a.accountType) && a.firstPage && a.lastPage);
+    for (const a of todo) a.positionsLoading = true;
+    recheck(rec, pages);
+    current = { id: null, data: rec, dirty: true };
+    renderRecord();
+    $("record").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+
+    let done = 0;
+    steps(3, `0 of ${todo.length} accounts`);
+    await Promise.all(todo.map(async (a) => {
+      const g = early.find(e => usable(e, a, rec.accounts));
+      try {
+        let r;
+        try { r = g ? await g.promise : null; } catch (e) { if (e && e.code === "cancelled") throw e; r = null; }
+        if (!r) r = await readPositions(a.accountNumber, a.registration, a.firstPage, a.lastPage);
+        a.positions = (Array.isArray(r && r.positions) ? r.positions : []).map(normPosition);
+        a.cashBalance = num(r && r.cashBalance);
+        a.positionsRead = true;
+      } catch (e) {
+        if (e && e.code === "cancelled") throw e;
+        a.positions = []; a.positionsRead = false;
+        a.readError = claudeMsg(e);
+      }
+      a.positionsLoading = false;
+      done++; steps(3, `${done} of ${todo.length} accounts`);
+      if (current && current.data === rec) { recheck(rec, pages); renderRecordSoon(); }
+    }));
+
+    steps(4);
+    recheck(rec, pages);
+    if (current && current.data === rec) renderRecord();
+    $("status").hidden = true;
+  } catch (e) {
+    if (current && current.data) for (const a of current.data.accounts) if (a.positionsLoading) { a.positionsLoading = false; a.readError = a.readError || "Stopped before positions were read."; }
+    if (current) renderRecordSoon();
+    $("status").hidden = true;
+    if (e && e.code === "cancelled") { toast("Stopped"); return; }
+    showError(e && e.code ? claudeMsg(e) : `The PDF couldn't be read (${(e && e.message) || "unknown error"}). Check that it opens, or enter the account by hand.`);
+  } finally { readCtl = null; }
+}
+$("stopBtn").addEventListener("click", () => readCtl && readCtl.abort());
+
+// Answers are kept for a day, so reading the same file again returns at once.
+const CACHE = { gcTime: 24 * 60 * 60 * 1000 };
+// Run at most n Claude calls at a time; later ones wait their turn in order.
+function pool(n) {
+  let active = 0; const q = [];
+  const next = () => {
+    if (active >= n || !q.length) return;
+    active++;
+    const { fn, res, rej } = q.shift();
+    Promise.resolve().then(fn).then(res, rej).finally(() => { active--; next(); });
+  };
+  return (fn) => new Promise((res, rej) => { q.push({ fn, res, rej }); next(); });
+}
+// Accounts the rules see before Claude answers: each printed number, with the run of pages
+// that carry it, extended over following pages that name no other account.
+function guessAccounts(pages) {
+  const found = ACAT.findAccountNumbers(pages);
+  const groups = [];
+  for (const f of found) {
+    const g = groups.find(x => ACAT.sameAccount(x.number, f.number));
+    if (g) { g.pages = [...new Set([...g.pages, ...f.pages])].sort((a, b) => a - b); if (g.masked && !f.masked) { g.number = f.number; g.masked = false; } }
+    else groups.push({ number: f.number, masked: f.masked, pages: [...f.pages] });
+  }
+  const owner = new Map();
+  for (const g of groups) for (const n of g.pages) owner.set(n, (owner.get(n) || 0) + 1);
+  const last = pages.length ? pages[pages.length - 1].n : 0;
+  return groups.map(g => {
+    // Pages that name several accounts (a household summary) don't belong to any one of them.
+    const own = g.pages.filter(n => owner.get(n) === 1);
+    if (!own.length) return null;
+    const runs = []; let r = [own[0]];
+    for (let i = 1; i < own.length; i++) { if (own[i] === own[i - 1] + 1) r.push(own[i]); else { runs.push(r); r = [own[i]]; } }
+    runs.push(r);
+    const best = runs.sort((a, b) => b.length - a.length || a[0] - b[0])[0];
+    let end = best[best.length - 1];
+    while (end < last && !owner.has(end + 1)) end++;
+    return { number: g.number, first: best[0], last: end };
+  }).filter(Boolean);
+}
+// An early positions read counts only when it is the same account and its pages cover Claude's
+// range for it without reaching into pages Claude gave to another account.
+function usable(g, a, accounts) {
+  if (!ACAT.sameAccount(g.number, a.accountNumber) || g.first > a.firstPage || g.last < a.lastPage) return false;
+  for (let n = g.first; n <= g.last; n++) {
+    if (n >= a.firstPage && n <= a.lastPage) continue;
+    if (accounts.some(o => o !== a && o.firstPage && n >= o.firstPage && n <= o.lastPage)) return false;
+  }
+  return true;
+}
+function recheck(rec, pages) {
+  ACAT.checkRecord(rec, pages);
+  for (const a of rec.accounts) if (a.readError) a.flags.unshift(ACAT.flag("a" + alnum(a.accountNumber), "bad", `Positions couldn't be read: ${a.readError}`, "Claude"));
+}
+
+const num = (v) => { if (v == null || v === "") return null; const n = typeof v === "number" ? v : Number(String(v).replace(/[$,\s]/g, "").replace(/^\((.*)\)$/, "-$1")); return isFinite(n) ? n : null; };
+const int = (v) => { const n = parseInt(v, 10); return isFinite(n) && n > 0 ? n : null; };
+function normPosition(p) {
+  return { description: str(p && p.description), symbol: str(p && p.symbol), cusip: str(p && p.cusip), quantity: str(p && p.quantity),
+    price: num(p && p.price), value: num(p && p.value), assetClass: str(p && p.assetClass) || "other", page: int(p && p.page),
+    issue: p && p.issue ? str(p.issue) : null, issueNote: str(p && p.issueNote) };
+}
+const firmObj = (f) => f && str(f.name) ? { name: str(f.name), quote: str(f.quote), page: int(f.page), selfClearing: f.selfClearing === true } : null;
+function mergeRead(acc, part) {
+  part = part && typeof part === "object" ? part : {};
+  if (!acc) return { ...part, accounts: Array.isArray(part.accounts) ? part.accounts : [], notes: Array.isArray(part.notes) ? part.notes : [] };
+  for (const k of ["statementPeriod", "deliveringFirm", "clearingFirm", "dtcNumber"]) if (!acc[k] && part[k]) acc[k] = part[k];
+  for (const a of Array.isArray(part.accounts) ? part.accounts : []) {
+    const m = acc.accounts.find(x => ACAT.sameAccount(x.accountNumber, a.accountNumber));
+    if (m) { m.lastPage = Math.max(m.lastPage || 0, a.lastPage || 0); m.firstPage = Math.min(m.firstPage || 9999, a.firstPage || 9999); if (m.endingValue == null) m.endingValue = a.endingValue; }
+    else acc.accounts.push(a);
+  }
+  if (Array.isArray(part.notes)) acc.notes.push(...part.notes);
+  return acc;
+}
+function normalizeRead(r, fileName, pageCount) {
+  r = r || {};
+  return {
+    fileName, pageCount, statementPeriod: str(r.statementPeriod),
+    deliveringFirm: firmObj(r.deliveringFirm), clearingFirm: firmObj(r.clearingFirm),
+    dtcPrinted: r.dtcNumber && str(r.dtcNumber.value) ? { value: str(r.dtcNumber.value), quote: str(r.dtcNumber.quote), page: int(r.dtcNumber.page) } : null,
+    notes: (r.notes || []).map(str).filter(Boolean).slice(0, 8),
+    firmsChecked: false, flagNotes: {},
+    accounts: (r.accounts || []).map((a, i) => ({
+      key: alnum(a.accountNumber) || "acct" + i,
+      accountNumber: str(a.accountNumber), accountNumberPage: int(a.accountNumberPage),
+      registration: str(a.registration), registrationPage: int(a.registrationPage),
+      accountType: ACAT.ACCOUNT_TYPES.includes(str(a.accountType)) ? str(a.accountType) : (ACAT.typeFromRegistration(a.registration) || ""),
+      program: str(a.program), managed: a.managed === true, endingValue: num(a.endingValue),
+      firstPage: int(a.firstPage), lastPage: int(a.lastPage),
+      acatEligible: ["yes", "no", "check"].includes(a.acatEligible) ? a.acatEligible : "check", acatNote: str(a.acatNote),
+      transferType: "full_in_kind", positions: [], positionsRead: false, cashBalance: null,
+      confirmed: {}, status: "draft"
+    }))
+  };
+}
+
+// ---------- DTC lookup ----------
+function firmRow(name) {
+  if (!str(name)) return null;
+  return firms.find(f => [f.clearing, ...(str(f.aliases).split(/[,;]/))].some(n => ACAT.sameFirm(n, name))) || null;
+}
+// Where the clearing number comes from, in order: printed on the statement, the team's table, DTCC's ACATS list.
+function dtcSource(d) {
+  const cf = d.clearingFirm;
+  if (d.dtcPrinted) return { kind: "printed", number: d.dtcPrinted.value };
+  if (!cf) return { kind: "none", number: "" };
+  const row = firmRow(cf.name);
+  // Look up every name the firm goes by; keep each participant once, best score first.
+  const seen = new Map();
+  for (const nm of [cf.name, ...(row ? [row.clearing, ...str(row.aliases).split(/[,;]/)] : [])].map(str).filter(Boolean)) {
+    const r = ACAT.directoryLookup(nm);
+    for (const k of ["acats", "dtc"]) for (const e of r[k]) { const id = k + e.number + e.name; if (!seen.has(id) || seen.get(id).score < e.score) seen.set(id, { ...e, list: k }); }
+  }
+  const all = [...seen.values()].sort((a, b) => b.score - a.score || a.number.localeCompare(b.number));
+  const dir = { acats: all.filter(e => e.list === "acats"), dtc: all.filter(e => e.list === "dtc") };
+  if (row && str(row.dtc)) return { kind: "table", number: row.dtc, row, dir };
+  if (dir.acats.length) return { kind: "acats", number: dir.acats[0].number, entry: dir.acats[0], dir, row };
+  if (dir.dtc.length) return { kind: "dtconly", number: dir.dtc[0].number, entry: dir.dtc[0], dir, row };
+  return { kind: "none", number: "", dir, row };
+}
+// Household flags that depend on the live firm table and the directory.
+function dtcFlag(d) {
+  const cf = d.clearingFirm;
+  if (!cf) return null;
+  const s = dtcSource(d), D = typeof DTCC_DIRECTORY !== "undefined" ? DTCC_DIRECTORY : {};
+  // The firm's own ACATS entries; sub-accounts count only when the firm has no plain entry.
+  const own = s.dir ? (s.dir.acats.some(e => e.score >= 3) ? s.dir.acats.filter(e => e.score >= 3) : s.dir.acats.filter(e => e.score >= 2)) : [];
+  const acatNums = [...new Set(own.map(e => e.number))];
+  if (s.kind === "printed") {
+    const row = firmRow(cf.name);
+    if (row && row.dtc && alnum(row.dtc) !== alnum(s.number)) return ACAT.flag("h", "warn", `The statement prints ${s.number}, but the firm table has ${row.dtc} for ${row.clearing}. Check which is current.`, "DTC table");
+    return null;
+  }
+  if (s.kind === "table") {
+    if (acatNums.length && !acatNums.includes(s.number)) return ACAT.flag("h", "warn", `The team's table has ${s.number} for ${s.row.clearing}, but DTCC's ACATS list (${D.acatsAsOf}) shows ${acatNums.join(" or ")}. Check which number ACATS uses.`, "DTCC list");
+    if (s.row.status !== "confirmed") return ACAT.flag("h", "warn", `The number ${s.number} for ${s.row.clearing} hasn't been confirmed yet. Confirm it in the clearing firm table before submitting.`, "DTC table");
+    return null;
+  }
+  if (s.kind === "acats") {
+    if (acatNums.length > 1) return ACAT.flag("h", "warn", `DTCC's ACATS list has more than one number for ${cf.name}: ${own.map(e => `${e.number} (${e.name}${e.location ? ", " + e.location : ""})`).join("; ")}. Confirm which one this transfer uses.`, "DTCC list");
+    if (s.entry.score < 2) return ACAT.flag("h", "warn", `Closest match in DTCC's ACATS list is ${s.entry.number}, ${s.entry.name}. Check it's the same firm as ${cf.name}.`, "DTCC list");
+    return null;
+  }
+  if (s.kind === "dtconly") return ACAT.flag("h", "bad", `${s.entry.name} is a DTC participant (${s.entry.number}) but isn't on DTCC's list of ACATS participants (${D.acatsAsOf}). The transfer may need to go through a different firm or a non-ACAT process.`, "DTCC list");
+  return ACAT.flag("h", "bad", `${cf.name} isn't in the team's table or DTCC's lists. Find its clearing number and add it to the clearing firm table below.`, "DTC table");
+}
+const dtcText = (d) => dtcSource(d).number;
+function householdFlags(d) { const f = [...(d.flags || [])]; const x = dtcFlag(d); if (x) f.unshift(x); return f; }
+
+// ---------- readiness ----------
+const CHECKS = [["accountNumber", "Account number"], ["registration", "Registration"], ["accountType", "Account type"], ["positions", "Positions"]];
+function openFlags(d, list) { return list.filter(f => f.level !== "info" && !str(d.flagNotes[f.id])); }
+function readyProblems(d, a) {
+  const out = [];
+  if (!d.firmsChecked) out.push("check the firms");
+  const missing = CHECKS.filter(([k]) => !a.confirmed[k]).map(([, l]) => l.toLowerCase());
+  if (missing.length) out.push("check " + missing.join(", "));
+  const open = openFlags(d, householdFlags(d)).length + openFlags(d, a.flags || []).length;
+  if (open) out.push(`resolve ${open} flag${open > 1 ? "s" : ""}`);
+  return out;
+}
+
+// ---------- record view ----------
+function markDirty() { if (current) current.dirty = true; }
+// The viewer has no confirm() dialog, so an unsaved read is replaced only after a second try.
+let discardArmed = 0;
+function confirmDiscard() {
+  if (Date.now() - discardArmed < 8000) return true;
+  discardArmed = Date.now();
+  toast("The statement on screen isn't saved. Drop the file again to replace it.");
+  return false;
+}
+
+function renderRecord() {
+  const box = $("record"); box.replaceChildren();
+  if (revealedFor !== current) { revealed = new Set(); revealedFor = current; }   // a different record: mask everything again
+  if (!current) { box.hidden = true; return; }
+  box.hidden = false;
+  const d = current.data, isNew = !current.id;
+
+  const head = el("div", { class: "record-head" },
+    el("div", { style: "display:grid;gap:4px" },
+      el("h2", { text: isNew ? "Check and save" : (d.accounts[0] && d.accounts[0].registration) || d.fileName || "Saved record" }),
+      el("span", { class: "small muted", text: [d.fileName, d.statementPeriod, d.pageCount ? d.pageCount + " pages" : ""].filter(Boolean).join(" · ") })),
+    !isNew ? el("span", { class: "small muted", text: `Read by ${nameOf(d.readBy)} ${when(d.readAt)}${d.updatedAt && d.updatedAt !== d.readAt ? ` · last saved by ${nameOf(d.updatedBy)} ${when(d.updatedAt)}` : ""}` }) : null);
+  box.append(head);
+
+  // Firms
+  const hf = householdFlags(d);
+  const firmsBox = el("div", { style: "display:grid;gap:14px" },
+    el("h3", { text: "Delivering and clearing firm" }),
+    el("div", { class: "firms" },
+      factEditable("Delivering firm", d.deliveringFirm, "deliveringFirm"),
+      factEditable("Clearing firm", d.clearingFirm, "clearingFirm"),
+      dtcFact(d)),
+    flagList(d, hf),
+    el("label", { class: "check" }, chk(d.firmsChecked, (v) => { d.firmsChecked = v; resetReady(d); }), "I've checked the delivering firm, clearing firm and DTC number against the statement"));
+  box.append(firmsBox);
+  if (d.notes && d.notes.length) box.append(el("div", { class: "notice" }, el("strong", { text: "From the statement: " }), d.notes.join(" · ")));
+
+  // Accounts
+  const accts = el("div", { style: "display:grid;gap:16px" },
+    el("div", { class: "sec-head" }, el("h3", { text: `Accounts (${d.accounts.length})` }),
+      el("button", { class: "linkbtn", type: "button", text: "Add an account", onclick: () => { d.accounts.push(blankAccount()); markDirty(); renderRecord(); } })));
+  d.accounts.forEach((a, i) => accts.append(accountCard(d, a, i)));
+  if (!d.accounts.length) accts.append(el("p", { class: "empty", text: "No accounts were found. Add one by hand." }));
+  box.append(accts);
+
+  // Actions
+  const save = el("button", { class: "btn primary", type: "button", text: isNew ? "Save to team log" : "Save changes", onclick: () => saveRecord(save) });
+  const loading = d.accounts.some(a => a.positionsLoading);
+  if (!db || canWrite === false || loading) save.disabled = true;
+  const acts = el("div", { class: "actions" }, save, canWrite === false ? needChip() : null,
+    el("button", { class: "btn", type: "button", text: isNew ? "Discard" : "Close", onclick: () => { if (readCtl) readCtl.abort(); current = null; renderRecord(); renderLog(); } }),
+    loading ? el("span", { class: "small muted", text: "Positions are still being read. You can start checking the accounts." }) : null,
+    downloads ? el("button", { class: "btn", type: "button", text: "Download CSV", onclick: exportCsv }) : null,
+    el("span", { class: "spacer" }),
+    !db ? el("span", { class: "small muted", text: "The team log needs a signed-in claude.ai view." }) : null);
+  if (!isNew && db) acts.append(...(canWrite === false ? [el("button", { class: "btn danger", type: "button", text: "Delete record", disabled: true }), needChip()] : [deleteBtn()]));
+  box.append(acts);
+}
+
+function factEditable(label, f, key) {
+  const d = current.data;
+  const inp = el("input", { type: "text", id: "f-" + key, autocomplete: "off" });
+  inp.value = f ? f.name : "";
+  inp.addEventListener("change", () => {
+    const v = str(inp.value);
+    d[key] = v ? { ...(d[key] || {}), name: v } : null;
+    markDirty(); resetReady(d); renderRecord();
+  });
+  return el("div", { class: "fact" },
+    el("span", { class: "k" }, el("label", { for: "f-" + key, text: label }), f && f.selfClearing ? el("span", { class: "chip warn", text: "Self-clearing?" }) : null),
+    el("div", { class: "field-row" }, inp, copyBtn(() => inp.value, label.toLowerCase())),
+    f && f.quote ? el("div", { class: "quote", text: `"${f.quote}"${f.page ? ` (p.${f.page})` : ""}` }) : null);
+}
+function dtcFact(d) {
+  const s = dtcSource(d), v = s.number, D = typeof DTCC_DIRECTORY !== "undefined" ? DTCC_DIRECTORY : {};
+  const chip = s.kind === "printed" ? el("span", { class: "chip ok", text: "Printed on statement" })
+    : s.kind === "table" ? (s.row.status === "confirmed" ? el("span", { class: "chip ok", text: "Confirmed" }) : el("span", { class: "chip warn", text: "Verify" }))
+    : s.kind === "acats" ? el("span", { class: "chip " + (s.entry.score >= 2 ? "ok" : "warn"), text: "DTCC ACATS list" })
+    : s.kind === "dtconly" ? el("span", { class: "chip bad", text: "Not an ACATS participant" })
+    : el("span", { class: "chip bad", text: "Not on file" });
+  const note = s.kind === "printed" ? `"${d.dtcPrinted.quote}"${d.dtcPrinted.page ? ` (p.${d.dtcPrinted.page})` : ""}`
+    : s.kind === "table" ? `From the clearing firm table: ${s.row.clearing}${s.row.source ? " · " + s.row.source : ""}`
+    : s.kind === "acats" ? `${s.entry.name}${s.entry.location ? ", " + s.entry.location : ""} · NSCC member directory, ACATS participants, ${D.acatsAsOf}`
+    : s.kind === "dtconly" ? `${s.entry.name} · DTC participant list, ${D.dtcAsOf}` : "";
+  return el("div", { class: "fact" },
+    el("span", { class: "k", text: "ACAT / DTC clearing number" }),
+    el("div", { class: "v big" }, v || "—", v ? copyBtn(v, "clearing number") : null, chip),
+    note ? el("div", { class: "quote", text: note }) : null);
+}
+
+function flagList(d, list) {
+  if (!list.length) return null;
+  return el("ul", { class: "flags" }, list.map(f => {
+    const li = el("li", { class: f.level }, el("span", { class: "src", text: f.src }), el("span", { text: maskText(f.text) }));
+    if (f.level !== "info") {
+      const inp = el("input", { type: "text", id: "fn-" + f.id, autocomplete: "off", placeholder: "How was this resolved?", "aria-label": "How was this resolved?" });
+      inp.value = d.flagNotes[f.id] || "";
+      inp.addEventListener("input", () => { d.flagNotes[f.id] = inp.value; markDirty(); });
+      inp.addEventListener("change", () => { resetReady(d); renderRecordSoon(); });
+      li.append(inp);
+    }
+    return li;
+  }));
+}
+// Redraw without losing the reader's place: scroll position and the field being typed in.
+let rrT; function renderRecordSoon() {
+  clearTimeout(rrT);
+  rrT = setTimeout(() => {
+    const y = scrollY, f = document.activeElement, id = f && f.id, sel = f && "selectionStart" in f ? [f.selectionStart, f.selectionEnd] : null;
+    renderRecord(); scrollTo(0, y);
+    const g = id && document.getElementById(id);
+    if (g) { g.focus({ preventScroll: true }); if (sel && g.setSelectionRange) try { g.setSelectionRange(sel[0], sel[1]); } catch { /* not a text field */ } }
+  }, 0);
+}
+function resetReady(d, a) { for (const x of a ? [a] : d.accounts) if (x.status === "ready") { x.status = "draft"; x.readyBy = null; x.readyAt = null; } markDirty(); }
+const chk = (val, on) => { const c = el("input", { type: "checkbox" }); c.checked = !!val; c.addEventListener("change", () => { on(c.checked); renderRecordSoon(); }); return c; };
+
+function blankAccount() {
+  return { key: "m" + Date.now().toString(36), accountNumber: "", registration: "", accountType: "", program: "", managed: false, endingValue: null,
+    firstPage: null, lastPage: null, acatEligible: "yes", acatNote: "", transferType: "full_in_kind", positions: [], positionsRead: false,
+    cashBalance: null, confirmed: {}, status: "draft", flags: [], manual: true };
+}
+
+function accountCard(d, a, i) {
+  const ready = a.status === "ready";
+  const eligible = ACAT.NON_ACAT_TYPES.has(a.accountType) || a.acatEligible === "no" ? el("span", { class: "chip bad", text: "Not by ACAT" })
+    : a.acatEligible === "check" ? el("span", { class: "chip warn", text: "Check ACAT" }) : null;
+  const card = el("article", { class: "account" + (ready ? " is-ready" : ""), "aria-label": "Account " + (a.accountNumber ? maskNum(a.accountNumber) : i + 1) },
+    el("div", { class: "acct-top" },
+      el("span", { class: "mono", style: "font-weight:600;font-size:17px;letter-spacing:.03em", text: !a.accountNumber ? "New account" : revealed.has(a.key) ? a.accountNumber : maskNum(a.accountNumber) }),
+      a.accountNumber && !revealed.has(a.key) ? showBtn(a.key) : null,
+      el("span", { class: "chip", text: a.accountType || "Type not set" }),
+      a.managed ? el("span", { class: "chip info", text: "Managed" }) : null, eligible,
+      ready ? el("span", { class: "chip ok", text: "Ready" }) : el("span", { class: "chip", text: "Draft" }),
+      el("span", { style: "flex:1" }),
+      el("span", { class: "mono small", text: moneyOr(a.endingValue) })));
+
+  const body = el("div", { class: "acct-body" });
+  const field = (label, key, opts = {}) => {
+    const id = `a${i}-${key}`;
+    let inp;
+    if (opts.options) {
+      inp = el("select", { id }, el("option", { value: "", text: "Choose…" }), opts.options.map(o => Array.isArray(o) ? el("option", { value: o[0], text: o[1] }) : el("option", { value: o, text: o })));
+      inp.value = a[key] || "";
+    } else if (opts.mask && str(a[key]) && !revealed.has(a.key)) {
+      // Masked until Show is clicked; Copy still copies the full number.
+      inp = el("input", { type: "text", id, class: "mono", readonly: true, "aria-label": label + " (masked)" }); inp.value = maskNum(a[key]);
+      const pg = opts.page ? el("span", { class: "muted", text: `p.${opts.page}` }) : null;
+      return el("label", { class: "f" + (opts.wide ? " wide" : "") }, el("span", {}, label, pg ? " · " : "", pg),
+        el("div", { class: "field-row" }, inp, showBtn(a.key), opts.copy ? copyBtn(() => str(a[key]), label.toLowerCase()) : null));
+    } else { inp = el("input", { type: "text", id, class: opts.mono ? "mono" : "", autocomplete: "off", spellcheck: "false" }); inp.value = a[key] == null ? "" : a[key]; }
+    inp.addEventListener("change", () => {
+      a[key] = opts.number ? num(inp.value) : inp.value;
+      if (opts.confirmKey) a.confirmed[opts.confirmKey] = false;
+      resetReady(d, a); renderRecordSoon();
+    });
+    const pg = opts.page ? el("span", { class: "muted", text: `p.${opts.page}` }) : null;
+    return el("label", { class: "f" + (opts.wide ? " wide" : "") }, el("span", {}, label, pg ? " · " : "", pg),
+      el("div", { class: "field-row" }, inp, opts.copy ? copyBtn(() => inp.value, label.toLowerCase()) : null));
+  };
+  body.append(el("div", { class: "acct-grid" },
+    field("Account number", "accountNumber", { mono: true, copy: true, mask: true, page: a.accountNumberPage, confirmKey: "accountNumber" }),
+    field("Account type", "accountType", { options: ACAT.ACCOUNT_TYPES, confirmKey: "accountType" }),
+    field("Transfer", "transferType", { options: ACAT.TRANSFER_TYPES }),
+    field("Registration (exact)", "registration", { copy: true, wide: true, page: a.registrationPage, confirmKey: "registration" }),
+    field("Program", "program", {}),
+    field("Account value", "endingValue", { mono: true, number: true }),
+    el("div", { class: "fact" }, el("span", { class: "k", text: "Statement pages" }), el("div", { class: "v small mono", text: a.firstPage ? `p.${a.firstPage}–${a.lastPage}` : "—" }))));
+
+  body.append(flagList(d, a.flags || []));
+  body.append(positionsTable(d, a));
+
+  // Self-check
+  const checks = el("div", { class: "checks" }, el("span", { class: "small muted", text: "Checked against the statement:" }),
+    CHECKS.map(([k, l]) => el("label", { class: "check" }, chk(a.confirmed[k], (v) => { a.confirmed[k] = v; resetReady(d, a); }), l)));
+  body.append(checks);
+
+  const probs = readyProblems(d, a);
+  if (a.positionsLoading) probs.unshift("wait for the positions");
+  const readyBtn = el("button", { class: "btn " + (ready ? "" : "primary"), type: "button", text: ready ? "Mark as draft" : "Mark ready", disabled: !ready && probs.length ? true : undefined,
+    onclick: () => { if (ready) { a.status = "draft"; a.readyBy = null; a.readyAt = null; } else { a.status = "ready"; a.readyBy = myId; a.readyAt = new Date().toISOString(); } markDirty(); renderRecord(); if (current.id && canWrite !== false) saveRecord(null, true); } });
+  body.append(el("div", { class: "acct-actions" },
+    readyBtn,
+    el("button", { class: "btn", type: "button", text: "Copy for ClientWorks", onclick: () => copyText(summaryText(d, a), "account summary") }),
+    el("span", { class: "small muted", text: ready ? `Ready · ${nameOf(a.readyBy)} ${when(a.readyAt)}` : probs.length ? "To mark ready: " + probs.join("; ") + "." : "" }),
+    el("span", { class: "spacer" }),
+    el("button", { class: "linkbtn", type: "button", text: "Remove account", onclick: () => { d.accounts.splice(i, 1); markDirty(); renderRecord(); } })));
+  card.append(body);
+  return card;
+}
+
+function positionsTable(d, a) {
+  const pos = a.positions || [];
+  if (a.positionsLoading) return el("p", { class: "small muted", role: "status", text: "Reading positions…" });
+  const wrap = el("details", { class: "fold", open: pos.length && pos.length <= 25 ? true : undefined },
+    el("summary", { text: `Positions (${pos.length})${pos.length ? " · " + moneyOr(pos.reduce((s, x) => s + (Number(x.value) || 0), 0)) : ""}` }));
+  if (!pos.length) { wrap.append(el("p", { class: "small muted", text: a.positionsRead ? "None found." : "Not read. Add positions by hand if needed." }), addPosBtn(a)); return wrap; }
+  const cell = (x, k, cls, fmt) => {
+    const miss = x.check && x.check[k] === false;
+    return el("td", { class: (cls || "") + (miss ? " miss" : ""), title: miss ? "Not found in the statement's text" : undefined }, fmt ? fmt(x[k]) : (x[k] || "—"), miss ? " ⚠" : "");
+  };
+  const edit = (x, k, cls, isNum) => {
+    const i = el("input", { type: "text", class: cls || "", "aria-label": k, autocomplete: "off", spellcheck: "false" });
+    i.value = x[k] == null ? "" : x[k];
+    i.addEventListener("change", () => { x[k] = isNum ? num(i.value) : i.value; if (x.check) delete x.check[k]; a.confirmed.positions = false; resetReady(d, a); renderRecordSoon(); });
+    return el("td", {}, i);
+  };
+  const rows = pos.map((x, j) => x.editing ? el("tr", {},
+    edit(x, "description"), edit(x, "symbol", "mono"), edit(x, "cusip", "mono"), edit(x, "quantity", "mono"), edit(x, "price", "mono", true), edit(x, "value", "mono", true),
+    el("td", {}), el("td", { style: "white-space:nowrap" },
+      el("button", { class: "copy", type: "button", text: "Done", onclick: () => { x.editing = false; renderRecord(); } }), " ",
+      el("button", { class: "copy", type: "button", text: "✕", "aria-label": "Remove position", onclick: () => { a.positions.splice(j, 1); a.confirmed.positions = false; resetReady(d, a); renderRecord(); } })))
+  : el("tr", {},
+    el("td", {}, x.description || "—", x.issue ? el("span", { class: "chip " + (["alternative", "annuity", "not DTC eligible"].includes(x.issue) ? "bad" : x.issue === "sweep" ? "info" : "warn"), style: "margin-left:6px", text: x.issue, title: x.issueNote || undefined }) : null),
+    cell(x, "symbol", "m"), cell(x, "cusip", "m"), cell(x, "quantity", "n"),
+    el("td", { class: "n", text: x.price == null ? "—" : money(x.price) }),
+    cell(x, "value", "n", moneyOr),
+    el("td", { class: "m small muted", text: x.page ? "p." + x.page : "" }),
+    el("td", {}, el("button", { class: "copy", type: "button", text: "Edit", "aria-label": "Edit position", onclick: () => { x.editing = true; renderRecord(); } }))));
+  const total = pos.reduce((s, x) => s + (Number(x.value) || 0), 0);
+  wrap.append(el("div", { class: "tablewrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["Description", "Symbol", "CUSIP", "Quantity", "Price", "Value", "Page", ""].map(h => el("th", { text: h })))),
+    el("tbody", {}, rows),
+    el("tfoot", {}, el("tr", {}, el("td", { text: "Total", colspan: "5" }), el("td", { class: "n", text: moneyOr(total) }), el("td", { colspan: "2" }))))));
+  wrap.append(el("div", { class: "acct-actions", style: "margin-top:8px" }, addPosBtn(a),
+    el("button", { class: "copy", type: "button", text: "Copy positions", onclick: () => copyText(positionsText(a), "positions") })));
+  wrap.append(flagLegend());
+  return wrap;
+}
+
+// What the chips and marks on positions mean. Collapsed by default.
+const ISSUE_LEGEND = [
+  ["sweep", "info", "Cash sweep, bank deposit program or core money market. Usually moves as cash, not in kind."],
+  ["proprietary", "warn", "A fund or product of the delivering firm or its affiliates. LPL may not be able to hold it, so it may have to be sold or exchanged first."],
+  ["foreign", "warn", "Foreign security. It may need special handling or may not settle through DTC."],
+  ["other", "warn", "Something else to check before the transfer. Hover over the chip to read Claude's note."],
+  ["alternative", "bad", "Non-traded REIT, limited partnership, private fund or structured product not held at DTC. Usually can't move by ACAT; it's re-registered with the sponsor instead."],
+  ["annuity", "bad", "Annuity held as a position. It moves through the insurance carrier's process, not ACAT."],
+  ["not DTC eligible", "bad", "Can't settle through DTC, so it can't move in kind by ACAT."]
+];
+function flagLegend() {
+  return el("details", { class: "fold legend" },
+    el("summary", { text: "What the position flags mean" }),
+    el("dl", { class: "legend-list" },
+      ISSUE_LEGEND.map(([name, level, text]) => el("div", {}, el("dt", {}, el("span", { class: "chip " + level, text: name })), el("dd", { text }))),
+      el("div", {}, el("dt", {}, el("span", { class: "legend-miss", text: "⚠ after a value" })), el("dd", { text: "An amber value with ⚠ after it (symbol, CUSIP, quantity or value) wasn't found in the statement's text. Check it against the statement before marking the positions checked." })),
+      el("div", {}, el("dt", { class: "small muted", text: "Colors" }), el("dd", { text: "Blue is for information, amber needs a look, red likely won't transfer in kind." }))));
+}
+function addPosBtn(a) {
+  return el("button", { class: "linkbtn", type: "button", text: "Add a position", onclick: () => {
+    a.positions.push({ description: "", symbol: "", cusip: "", quantity: "", price: null, value: null, assetClass: "other", page: null, issue: null, issueNote: "", manual: true, editing: true });
+    a.positionsRead = true; a.confirmed.positions = false; resetReady(current.data, a); renderRecord();
+  } });
+}
+
+// ---------- text for ClientWorks ----------
+function summaryText(d, a) {
+  const notes = [...householdFlags(d), ...(a.flags || [])].filter(f => str(d.flagNotes[f.id])).map(f => `- ${f.text} Resolved: ${d.flagNotes[f.id]}`);
+  return [
+    `Delivering firm: ${d.deliveringFirm ? d.deliveringFirm.name : ""}`,
+    `Clearing firm: ${d.clearingFirm ? d.clearingFirm.name : ""}`,
+    `DTC / clearing #: ${dtcText(d)}`,
+    `Account number: ${a.accountNumber}`,
+    `Registration: ${a.registration}`,
+    `Account type: ${a.accountType}`,
+    `Transfer: ${typeLabel(a.transferType)}`,
+    `Account value: ${moneyOr(a.endingValue)}${d.statementPeriod ? " (" + d.statementPeriod + ")" : ""}`,
+    a.positions && a.positions.length ? `Positions (${a.positions.length}):\n` + positionsText(a) : "",
+    notes.length ? "Notes:\n" + notes.join("\n") : ""
+  ].filter(Boolean).join("\n");
+}
+function positionsText(a) {
+  return (a.positions || []).map(x => [x.description, x.symbol, x.cusip, x.quantity, moneyOr(x.value)].filter(Boolean).join(" | ")).join("\n");
+}
+async function exportCsv() {
+  const d = current && current.data; if (!d) return;
+  const head = ["Delivering firm", "Clearing firm", "DTC", "Account number", "Registration", "Account type", "Transfer", "Account value", "Description", "Symbol", "CUSIP", "Quantity", "Price", "Value", "Issue"];
+  const rows = [];
+  for (const a of d.accounts) {
+    const base = [d.deliveringFirm && d.deliveringFirm.name, d.clearingFirm && d.clearingFirm.name, dtcText(d), a.accountNumber, a.registration, a.accountType, typeLabel(a.transferType), a.endingValue];
+    if (!a.positions.length) rows.push(base);
+    for (const x of a.positions) rows.push([...base, x.description, x.symbol, x.cusip, x.quantity, x.price, x.value, x.issue]);
+  }
+  const cell = (v) => { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const csv = [head, ...rows].map(r => r.map(cell).join(",")).join("\r\n");
+  try { await downloads.save({ filename: (str(d.fileName).replace(/\.pdf$/i, "") || "acat") + " accounts.csv", data: csv }); toast("Saved"); }
+  catch (e) { if (!e || e.code !== "declined") toast("The CSV couldn't be saved here."); }
+}
+
+// ---------- team log ----------
+let profiles = {};
+async function resolveNames(ids) {
+  ids = [...new Set(ids.filter(Boolean))];
+  if (!user || !ids.length) return;
+  try { Object.assign(profiles, await user.profiles(ids)); } catch { /* names stay generic */ }
+}
+const nameOf = (id) => (id && profiles[id] && profiles[id].name) || (id && id === myId ? "you" : "someone");
+
+function stripForSave(d) {
+  const c = JSON.parse(JSON.stringify(d));
+  for (const a of c.accounts) { delete a.positionsLoading; for (const x of a.positions || []) { delete x.check; delete x.editing; } }
+  return c;
+}
+async function saveRecord(btn, quiet) {
+  if (!db || !current) return;
+  const d = current.data, now = new Date().toISOString();
+  d.updatedAt = now; d.updatedBy = myId;
+  if (!current.id) { d.readAt = now; d.readBy = myId; }
+  d.title = (d.accounts.map(a => a.registration).filter(Boolean)[0] || d.fileName || "").slice(0, 200);
+  d.search = [d.title, d.deliveringFirm && d.deliveringFirm.name, d.clearingFirm && d.clearingFirm.name, ...d.accounts.map(a => a.accountNumber + " " + alnum(a.accountNumber) + " " + a.registration)].join(" ").toLowerCase().slice(0, 4000);
+  d.accountCount = d.accounts.length; d.readyCount = d.accounts.filter(a => a.status === "ready").length;
+  if (btn) btn.disabled = true;
+  try {
+    const ref = current.id ? db.doc("transfers/" + current.id) : db.collection("transfers").doc();
+    await ref.set(stripForSave(d));
+    current.id = ref.id; current.dirty = false;
+    if (!quiet) toast("Saved to the team log");
+    renderRecord();
+  } catch (e) {
+    if (e && e.code === "invalid_argument") { canWrite = false; $("viewOnly").hidden = false; toast("Saving needs Contributor access. Ask the page owner to change your access in the Share menu."); renderRecord(); renderFirms(); }
+    else if (e && e.code === "quota_exceeded") toast("The team log is full. Delete old records first.");
+    else toast("The record couldn't be saved. Check your connection and try again.");
+  } finally { if (btn) btn.disabled = false; }
+}
+function deleteBtn() {
+  const b = el("button", { class: "btn danger", type: "button", text: "Delete record" });
+  let t;
+  b.addEventListener("click", async () => {
+    if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Click again to delete"; t = setTimeout(() => { b.classList.remove("armed"); b.textContent = "Delete record"; }, 4000); return; }
+    clearTimeout(t); b.disabled = true;
+    try { await db.doc("transfers/" + current.id).delete(); current = null; renderRecord(); toast("Record deleted"); }
+    catch { b.disabled = false; toast("The record couldn't be deleted."); }
+  });
+  return b;
+}
+
+async function renderLog() {
+  const log = $("log");
+  if (!db) { log.replaceChildren(el("div", { class: "empty", text: "The team log needs a signed-in claude.ai view." })); return; }
+  const q = str($("search").value).toLowerCase(), f = $("logFilter").value;
+  const list = records.filter(r => (!q || (r.search || "").includes(q) || (r.search || "").includes(alnum(q).toLowerCase()))
+    && (f === "all" || (f === "ready" ? r.readyCount === r.accountCount && r.accountCount > 0 : r.readyCount < r.accountCount)));
+  $("logCount").textContent = records.length ? `(${records.length})` : "";
+  await resolveNames(list.flatMap(r => [r.readBy, r.updatedBy]));
+  log.replaceChildren();
+  if (!list.length) { log.append(el("div", { class: "empty", text: records.length ? "No records match." : "No statements saved yet. Read one above and save it to start the log." })); return; }
+  for (const r of list) {
+    const allReady = r.accountCount > 0 && r.readyCount === r.accountCount;
+    log.append(el("button", { class: "log-row" + (current && current.id === r.id ? " active" : ""), type: "button", onclick: () => openRecord(r.id) },
+      el("div", { style: "display:grid;gap:2px;min-width:0" },
+        el("span", { class: "log-title" }, r.title || r.fileName || "Untitled", " ", el("span", { class: "chip " + (allReady ? "ok" : ""), text: allReady ? "Ready" : `${r.readyCount || 0} of ${r.accountCount || 0} ready` })),
+        el("span", { class: "log-sub", text: [r.deliveringFirm && r.deliveringFirm.name, r.clearingFirm && "clears through " + r.clearingFirm.name, `${r.accountCount} account${r.accountCount === 1 ? "" : "s"}`, r.statementPeriod].filter(Boolean).join(" · ") })),
+      el("span", { class: "log-when", text: `${when(r.updatedAt)}\n${nameOf(r.updatedBy)}` })));
+  }
+}
+$("search").addEventListener("input", renderLog);
+$("logFilter").addEventListener("change", renderLog);
+async function openRecord(id) {
+  const r = records.find(x => x.id === id);
+  if (!r) return;
+  current = { id, data: JSON.parse(JSON.stringify(r.data)), dirty: false };
+  current.data.flagNotes = current.data.flagNotes || {};
+  await resolveNames([current.data.readBy, current.data.updatedBy, ...current.data.accounts.map(a => a.readyBy)]);
+  renderRecord(); renderLog();
+  $("record").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+
+// ---------- clearing firm table ----------
+let firmChanges = [];
+const STATUS = [["verify", "Verify"], ["confirmed", "Confirmed"]];
+function renderFirms() {
+  const body = $("firmBody"); body.replaceChildren();
+  $("addFirm").disabled = !db || canWrite === false;
+  $("addFirmNeed").hidden = !(db && canWrite === false);
+  $("firmCount").textContent = firms.length ? `(${firms.length})` : "";
+  if (!db) { body.append(el("tr", {}, el("td", { colspan: "6", class: "muted", text: "The firm table needs a signed-in claude.ai view." }))); return; }
+  if (!firms.length) body.append(el("tr", {}, el("td", { colspan: "6", class: "muted", text: "No clearing firms yet. Add the first one." })));
+  for (const f of [...firms].sort((a, b) => str(a.clearing).localeCompare(str(b.clearing)))) body.append(firmRowEl(f));
+  const hist = $("firmHist"); hist.replaceChildren();
+  if (!firmChanges.length) hist.append(el("li", {}, el("span", { class: "muted", text: "No changes recorded yet." })));
+  for (const c of firmChanges.slice(0, 30)) hist.append(el("li", {}, el("span", { text: c.summary }), el("span", { class: "when", text: `${nameOf(c.by)} · ${when(c.at)}` })));
+}
+function firmRowEl(f) {
+  const ro = canWrite === false;
+  const inp = (k, cls) => { const i = el("input", { type: "text", class: cls || "", value: f[k] || "", "aria-label": k, readonly: ro || undefined }); i.value = f[k] || ""; return i; };
+  const c = inp("clearing"), al = inp("aliases"), dt = inp("dtc", "mono"), src = inp("source");
+  const st = el("select", { "aria-label": "Status", disabled: ro || undefined }, STATUS.map(([v, l]) => el("option", { value: v, text: l }))); st.value = f.status || "verify";
+  const save = el("button", { class: "btn small", type: "button", text: "Save", hidden: true });
+  const dirty = () => { save.hidden = [c.value, al.value, dt.value, src.value, st.value].join("|") === [f.clearing || "", f.aliases || "", f.dtc || "", f.source || "", f.status || "verify"].join("|"); };
+  [c, al, dt, src].forEach(i => i.addEventListener("input", dirty)); st.addEventListener("change", dirty);
+  save.addEventListener("click", async () => {
+    const next = { clearing: str(c.value), aliases: str(al.value), dtc: str(dt.value), source: str(src.value), status: st.value };
+    if (!next.clearing) { toast("Give the clearing firm a name."); return; }
+    if (next.status === "confirmed" && !next.source) { toast("Say where the DTC number was confirmed before marking it confirmed."); return; }
+    const changes = ["clearing", "aliases", "dtc", "source", "status"].filter(k => (f[k] || (k === "status" ? "verify" : "")) !== next[k])
+      .map(k => `${k === "clearing" ? "name" : k === "dtc" ? "DTC" : k} ${f[k] || "—"} → ${next[k] || "—"}`);
+    save.disabled = true;
+    try {
+      await db.doc("firms/" + f.id).set({ ...next, updatedBy: myId, updatedAt: new Date().toISOString() });
+      await db.collection("firmChanges").add({ firmId: f.id, summary: `${next.clearing}: ${changes.join("; ")}`, by: myId, at: new Date().toISOString() });
+      toast("Saved");
+    } catch (e) { toast(e && e.code === "invalid_argument" ? "You can view the table but not change it." : "The change couldn't be saved."); }
+    finally { save.disabled = false; }
+  });
+  const del = el("button", { class: "copy", type: "button", text: "✕", "aria-label": "Remove " + (f.clearing || "row"), hidden: ro || undefined });
+  let armed;
+  del.addEventListener("click", async () => {
+    if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "Remove?"; armed = setTimeout(() => { delete del.dataset.armed; del.textContent = "✕"; }, 4000); return; }
+    clearTimeout(armed);
+    try { await db.doc("firms/" + f.id).delete(); await db.collection("firmChanges").add({ firmId: f.id, summary: `Removed ${f.clearing} (DTC ${f.dtc || "—"})`, by: myId, at: new Date().toISOString() }); toast("Removed"); }
+    catch { toast("The row couldn't be removed."); }
+  });
+  return el("tr", {}, el("td", {}, c), el("td", {}, al), el("td", { style: "width:110px" }, dt), el("td", { style: "width:120px" }, st), el("td", {}, src), el("td", { style: "white-space:nowrap" }, save, " ", del));
+}
+$("addFirm").addEventListener("click", async () => {
+  if (!db) return;
+  try {
+    const ref = await db.collection("firms").add({ clearing: "New clearing firm", aliases: "", dtc: "", source: "", status: "verify", updatedBy: myId, updatedAt: new Date().toISOString() });
+    await db.collection("firmChanges").add({ firmId: ref.id, summary: "Added a row", by: myId, at: new Date().toISOString() });
+  } catch (e) { toast(e && e.code === "invalid_argument" ? "You can view the table but not change it." : "The row couldn't be added."); }
+});
+
+// ---------- DTCC directory search ----------
+if (typeof DTCC_DIRECTORY !== "undefined") $("dirLabel").textContent = `Search DTCC's lists by firm name or number (${DTCC_DIRECTORY.acats.length} ACATS participants as of ${DTCC_DIRECTORY.acatsAsOf}; ${DTCC_DIRECTORY.dtc.length} DTC participants as of ${DTCC_DIRECTORY.dtcAsOf})`;
+$("dirQ").addEventListener("input", () => {
+  const hits = ACAT.directorySearch($("dirQ").value);
+  const body = $("dirBody"); body.replaceChildren();
+  $("dirWrap").hidden = !str($("dirQ").value);
+  if (!hits.length) { body.append(el("tr", {}, el("td", { colspan: "5", class: "muted", text: "No participant matches." }))); return; }
+  for (const h of hits) {
+    const add = !db ? null : canWrite === false ? needChip() : el("button", { class: "copy", type: "button", text: "Add to table", onclick: async () => {
+      try {
+        const ref = await db.collection("firms").add({ clearing: h.name, aliases: "", dtc: h.number, status: h.acats ? "confirmed" : "verify", source: h.acats ? `DTCC NSCC directory, ACATS participant (${DTCC_DIRECTORY.acatsAsOf})` : `DTCC DTC participant list (${DTCC_DIRECTORY.dtcAsOf}); not an ACATS participant`, updatedBy: myId, updatedAt: new Date().toISOString() });
+        await db.collection("firmChanges").add({ firmId: ref.id, summary: `Added ${h.name} (${h.number}) from DTCC's list`, by: myId, at: new Date().toISOString() });
+        toast("Added to the table");
+      } catch { toast("The row couldn't be added."); }
+    } });
+    body.append(el("tr", {}, el("td", { class: "m" }, h.number, " ", copyBtn(h.number, "number")), el("td", { text: h.name }),
+      el("td", {}, el("span", { class: "chip " + (h.acats ? "ok" : "bad"), text: h.acats ? "Yes" : "No" })), el("td", { class: "small muted", text: h.location || "" }), el("td", {}, add)));
+  }
+});
+
+// ---------- manual entry ----------
+$("manualBtn").addEventListener("click", () => {
+  current = { id: null, dirty: true, data: { fileName: "", pageCount: 0, statementPeriod: "", deliveringFirm: null, clearingFirm: null, dtcPrinted: null, notes: [], firmsChecked: false, flagNotes: {}, flags: [], accounts: [blankAccount()] } };
+  renderRecord();
+});
+
+// ---------- file input ----------
+const drop = $("drop");
+$("fileIn").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; handleFile(f); });
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); handleFile(e.dataTransfer.files[0]); });
+
+// ---------- boot ----------
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "embedded-worker-not-fetched.js";
+async function boot() {
+  if (!window.claude || !claude.use) { $("noClaude").hidden = false; renderLog(); renderFirms(); return; }
+  const [s, d, u, dl] = await Promise.all(["sample", "db", "user", "downloads"].map(n => claude.use(n).catch(() => null)));
+  sample = s; db = d; user = u; downloads = dl;
+  if (sample) { try { sampleLimits = await sample.limits(); } catch { sampleLimits = null; } } else $("noClaude").hidden = false;
+  if (user) { myId = await user.id(); const c = await user.can("data.write"); canWrite = c === null ? null : c; }
+  $("viewOnly").hidden = canWrite !== false;
+  if (!db) { renderLog(); renderFirms(); return; }
+  db.collection("transfers").orderBy("updatedAt", "desc").limit(300).onSnapshot(snap => {
+    records = snap.docs.map(x => ({ id: x.id, data: x.data(), ...x.data() }));
+    renderLog();
+  }, () => { $("log").replaceChildren(el("div", { class: "empty", text: "The team log couldn't be loaded. Reload the page to try again." })); });
+  db.collection("firms").onSnapshot(snap => {
+    firms = snap.docs.map(x => ({ id: x.id, ...x.data() }));
+    renderFirms();
+    if (current) renderRecordSoon();
+  }, () => {});
+  db.collection("firmChanges").orderBy("at", "desc").limit(50).onSnapshot(async snap => {
+    firmChanges = snap.docs.map(x => x.data());
+    await resolveNames(firmChanges.map(c => c.by));
+    renderFirms();
+  }, () => {});
+}
+boot();
+window.addEventListener("beforeunload", (e) => { if (current && current.dirty && current.data.accounts.length) { e.preventDefault(); e.returnValue = ""; } });
+})();
+</script>
+
+</body></html>

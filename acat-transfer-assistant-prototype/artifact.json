@@ -1,0 +1,9 @@
+{
+  "title": "ACAT Transfer Assistant",
+  "url": "https://claude.ai/artifact/VG32NWvCNwVpZuN1We62Qb",
+  "icon": "transfer",
+  "capabilities": {
+    "downloads": {},
+    "sample": { "images": true }
+  }
+}
