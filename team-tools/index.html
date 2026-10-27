@@ -1,0 +1,297 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Winthrop Team Tools</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: same family as the Account Titling Reader and Rep ID Search. One reading column, a tab bar under the header, one panel per tool. */
+:root {
+  --bg: #f7f8f8;
+  --surface: #ffffff;
+  --fg: #1b2124;
+  --muted: #5d6870;
+  --rule: #dde2e4;
+  --accent: #1f5f7a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4eff4;
+  --warn: #8a5300;
+  --warn-bg: #fbf1df;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121618; --surface: #1a1f22; --fg: #e3e8ea; --muted: #95a1a8; --rule: #2c3438;
+    --accent: #7fb6cf; --accent-ink: #0e1a20; --accent-soft: #1d2c33; --warn: #e3ad5a; --warn-bg: #2b2416;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121618; --surface: #1a1f22; --fg: #e3e8ea; --muted: #95a1a8; --rule: #2c3438;
+  --accent: #7fb6cf; --accent-ink: #0e1a20; --accent-soft: #1d2c33; --warn: #e3ad5a; --warn-bg: #2b2416;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+.wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
+h1 { font-size: 26px; letter-spacing: -0.01em; }
+h2 { font-size: 20px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+p { margin: 0; max-width: 65ch; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--font-data); }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: grid; gap: 8px; }
+
+/* Tabs */
+.tabs { display: flex; flex-wrap: wrap; gap: 0 4px; border-bottom: 1px solid var(--rule); }
+.tab {
+  font: 500 14px var(--font-body); color: var(--muted); background: none; border: 0;
+  border-bottom: 2px solid transparent; padding: 10px 12px; margin-bottom: -1px; cursor: pointer;
+}
+.tab:hover { color: var(--fg); }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+
+.panel { display: grid; gap: 24px; min-width: 0; }
+.panel-head { display: grid; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.chip.tool { color: var(--accent); }
+.chip.shared { color: var(--warn); }
+
+.open-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.btn {
+  display: inline-block; text-decoration: none; font: 500 14px var(--font-body);
+  border: 1px solid var(--rule); background: var(--surface); color: var(--fg);
+  padding: 8px 16px; border-radius: 4px; cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.url { font: 12px var(--font-data); color: var(--muted); overflow-wrap: anywhere; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px 32px; }
+.cols > div { display: grid; gap: 8px; align-content: start; min-width: 0; }
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.note { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 3px 3px 0; font-size: 14px; }
+.note.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+
+/* Overview list */
+.toollist { display: grid; border-top: 1px solid var(--rule); }
+.toolrow {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px; align-items: center;
+  padding: 16px 4px; border-bottom: 1px solid var(--rule);
+}
+.toolrow h2 { font-size: 17px; }
+.toolrow p { font-size: 14px; color: var(--muted); }
+.toolrow .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font: 14px var(--font-body); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.flow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; font-size: 14px; }
+.flow .step { font-weight: 500; }
+.flow .arrow { color: var(--muted); font-family: var(--font-data); }
+@media (max-width: 560px) {
+  .toolrow { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Winthrop Team Tools</h1>
+    <p class="muted">The account-opening and advisor tools the team uses, in one place. Each tool runs at its own address, so opening it from here keeps its team log, saved records and access settings as they are.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Tools">
+    <button class="tab" role="tab" id="tab-overview" aria-controls="overview" data-tab="overview">All tools</button>
+    <button class="tab" role="tab" id="tab-titling" aria-controls="titling" data-tab="titling">Account Titling Reader</button>
+    <button class="tab" role="tab" id="tab-repid" aria-controls="repid" data-tab="repid">Rep ID Search</button>
+    <button class="tab" role="tab" id="tab-acat" aria-controls="acat" data-tab="acat">ACAT Statement Reader</button>
+  </nav>
+
+  <!-- Overview -->
+  <section class="panel" role="tabpanel" id="overview" aria-labelledby="tab-overview">
+    <div class="toollist">
+      <div class="toolrow">
+        <div>
+          <h2>Account Titling Reader</h2>
+          <p>Read a statement, trust, estate or entity document and save the reviewed registration to the team log.</p>
+        </div>
+        <div class="acts">
+          <button class="linkbtn" type="button" data-go="titling">Details</button>
+          <a class="btn primary" href="https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+      <div class="toolrow">
+        <div>
+          <h2>Rep ID Search</h2>
+          <p>Look up an LPL / IFA Rep ID, or an advisor's name, to get advisors, primary POC and branch.</p>
+        </div>
+        <div class="acts">
+          <button class="linkbtn" type="button" data-go="repid">Details</button>
+          <a class="btn primary" href="https://claude.ai/artifact/GYQpQLpye6LxArj59zd1dW" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+      <div class="toolrow">
+        <div>
+          <h2>ACAT Statement Reader</h2>
+          <p>Read a client's statement from the delivering firm and get each account's number, registration, type, clearing firm, DTC number and positions, checked against the statement.</p>
+        </div>
+        <div class="acts">
+          <button class="linkbtn" type="button" data-go="acat">Details</button>
+          <a class="btn primary" href="https://claude.ai/artifact/9xnMsWPsfaK3anMkCpD1DU" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;gap:10px">
+      <h3>A typical new account</h3>
+      <div class="flow">
+        <span class="step">Find the Rep ID</span><span class="arrow">→</span>
+        <span class="step">Read the client's document</span><span class="arrow">→</span>
+        <span class="step">Resolve flags</span><span class="arrow">→</span>
+        <span class="step">Second-person review</span><span class="arrow">→</span>
+        <span class="step">Open the account</span><span class="arrow">→</span>
+        <span class="step">Transfer assets in</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Account Titling Reader -->
+  <section class="panel" role="tabpanel" id="titling" aria-labelledby="tab-titling" hidden>
+    <div class="panel-head">
+      <div class="chips"><span class="chip tool">Tool</span><span class="chip">Team log</span><span class="chip">Uses Claude</span></div>
+      <h2>Account Titling Reader</h2>
+      <p>Upload a custodian statement or a trust, estate, POA or entity document. Claude pulls the registration, parties and beneficiaries so you can check them against the document and save them to the shared team log for account opening.</p>
+      <div class="open-row">
+        <a class="btn primary" href="https://claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo" target="_blank" rel="noopener">Open Account Titling Reader</a>
+        <span class="url">claude.ai/artifact/EzKQp67CxT81Gy7CAuCVdo</span>
+      </div>
+    </div>
+    <div class="cols">
+      <div>
+        <h3>What it pulls</h3>
+        <ul class="plain">
+          <li>Exact account title, registration type, tax ID, trust name and date, governing state</li>
+          <li>Owners, grantors, trustees and successors, POA agents and signers</li>
+          <li>Primary and contingent beneficiaries, shares, per stirpes</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Before a record is reviewed</h3>
+        <ul class="plain">
+          <li>Every flag needs a resolution note</li>
+          <li>Someone other than the person who saved it marks it reviewed</li>
+          <li>Name spellings and beneficiary totals are checked automatically</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Reads PDF (text or scanned), Word .docx, images and pasted text. The file itself isn't saved, only the fields you approve. Anyone who can open the page can read the team log; saving and marking records reviewed need Contributor access.</p>
+  </section>
+
+  <!-- Rep ID Search -->
+  <section class="panel" role="tabpanel" id="repid" aria-labelledby="tab-repid" hidden>
+    <div class="panel-head">
+      <div class="chips"><span class="chip tool">Tool</span><span class="chip">Shared list</span></div>
+      <h2>Rep ID Search</h2>
+      <p>Look up a Winthrop LPL / IFA Rep ID to see its advisors, primary point of contact and branch, or type an advisor's name to see every ID they're on. Answers come straight from the team's list, so a typo never returns a near match.</p>
+      <div class="open-row">
+        <a class="btn primary" href="https://claude.ai/artifact/GYQpQLpye6LxArj59zd1dW" target="_blank" rel="noopener">Open Rep ID Search</a>
+        <span class="url">claude.ai/artifact/GYQpQLpye6LxArj59zd1dW</span>
+      </div>
+    </div>
+    <div class="cols">
+      <div>
+        <h3>Search by</h3>
+        <ul class="plain">
+          <li>Rep ID, such as <span class="mono">L2MH</span></li>
+          <li>Advisor last name or nickname</li>
+          <li>Branch or manager ID, such as <span class="mono">50M6</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Offices on the list</h3>
+        <ul class="plain">
+          <li>Winthrop Wealth (<span class="mono">36HK</span>)</li>
+          <li>Financial Planning Strategies (<span class="mono">36HK</span>)</li>
+          <li>Unified Wealth Management (<span class="mono">K43N</span>)</li>
+          <li>Keel Financial Partners (<span class="mono">826X</span>)</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">When a new "IFA REP IDs ACTIVE" PDF comes out, upload it under Keep the list current. You'll see every new, changed and missing ID before anything is saved.</p>
+  </section>
+
+  <!-- ACAT Transfer Assistant -->
+  <section class="panel" role="tabpanel" id="acat" aria-labelledby="tab-acat" hidden>
+    <div class="panel-head">
+      <div class="chips"><span class="chip tool">Tool</span><span class="chip">Team log</span><span class="chip">Uses Claude</span></div>
+      <h2>ACAT Statement Reader</h2>
+      <p>Upload a client's statement and Claude lists every account on it. The page then checks each account number, registration, value and position against the statement's own text, and flags anything that doesn't match or may not transfer.</p>
+      <div class="open-row">
+        <a class="btn primary" href="https://claude.ai/artifact/9xnMsWPsfaK3anMkCpD1DU" target="_blank" rel="noopener">Open ACAT Statement Reader</a>
+        <span class="url">claude.ai/artifact/9xnMsWPsfaK3anMkCpD1DU</span>
+      </div>
+    </div>
+    <div class="cols">
+      <div>
+        <h3>For each account</h3>
+        <ul class="plain">
+          <li>Account number and registration exactly as printed, with copy buttons</li>
+          <li>Account type, transfer type and every position</li>
+          <li>Delivering firm, clearing firm and DTC number</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Before it's ready</h3>
+        <ul class="plain">
+          <li>Tick each field once you've checked it against the statement</li>
+          <li>Write how each flag was resolved</li>
+          <li>Annuities, insurance and planning services are flagged as not moving by ACAT</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">The ACAT/DTC number comes from the statement when it's printed there, then from the team's clearing firm table, then from DTCC's own list of ACATS participants built into the page. Anyone who can open the page can read the team log; saving records needs Contributor access. The earlier prototype is still at claude.ai/artifact/VG32NWvCNwVpZuN1We62Qb.</p>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  const tabs = [...document.querySelectorAll(".tab")];
+  const ids = tabs.map(t => t.dataset.tab);
+  function show(id, focus) {
+    if (!ids.includes(id)) id = "overview";
+    for (const t of tabs) {
+      const on = t.dataset.tab === id;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.dataset.tab).hidden = !on;
+      if (on && focus) t.focus();
+    }
+    try { localStorage.setItem("tt-tab", id); } catch {}
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => show(t.dataset.tab));
+    t.addEventListener("keydown", (e) => {
+      const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (d) { e.preventDefault(); show(ids[(i + d + ids.length) % ids.length], true); }
+    });
+  });
+  document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { show(b.dataset.go, true); }));
+  let start = location.hash.slice(1);
+  if (!ids.includes(start)) { try { start = localStorage.getItem("tt-tab") || ""; } catch { start = ""; } }
+  show(start);
+})();
+</script>
+
+</body></html>

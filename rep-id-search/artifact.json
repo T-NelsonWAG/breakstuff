@@ -1,0 +1,10 @@
+{
+  "title": "Rep ID Search",
+  "url": "https://claude.ai/artifact/GYQpQLpye6LxArj59zd1dW",
+  "capabilities": {
+    "db": {},
+    "downloads": {},
+    "sample": {},
+    "user": { "scopes": ["profile"] }
+  }
+}

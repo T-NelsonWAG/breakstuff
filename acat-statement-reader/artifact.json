@@ -1,0 +1,11 @@
+{
+  "title": "ACAT Statement Reader",
+  "url": "https://claude.ai/artifact/9xnMsWPsfaK3anMkCpD1DU",
+  "icon": "transfer",
+  "capabilities": {
+    "sample": { "images": true },
+    "db": { "rules": [{ "path": "", "read": "view", "write": "interact" }] },
+    "user": { "scopes": ["profile"] },
+    "downloads": true
+  }
+}
