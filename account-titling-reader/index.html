@@ -873,7 +873,7 @@ function renderEditor() {
   }
   if (!isNew && !isReviewed(d)) {
     const rv = el("button", { class: "btn", type: "button", id: "reviewBtn", text: "Mark reviewed",
-      title: "Confirm every field has been checked against the document. Must be someone other than the person who saved or last edited it." });
+      title: "Confirm every field has been checked against the document." });
     rv.addEventListener("click", () => markReviewed(rv));
     if (ro) { rv.disabled = true; rv.title = NEED_TIP; acts.append(rv, needChip()); }
     else acts.append(rv);
@@ -1063,7 +1063,7 @@ async function addHistory(id, entry) {
   try { await db.collection(`extractions/${id}/history`).add({ at: new Date().toISOString(), by: myId, ...entry }); return true; }
   catch { return false; }
 }
-const HIST_ACTIONS = { created: "Saved to the team log", edited: "Edited", reviewed: "Marked reviewed", deleted: "Deleted", exported: "Exported internal record PDF (full tax IDs)", exportedClient: "Exported client trust summary PDF" };
+const HIST_ACTIONS = { created: "Saved to the team log", edited: "Edited", reviewed: "Marked reviewed", reviewedSelf: "Marked reviewed by the person who saved or last edited it", deleted: "Deleted", exported: "Exported internal record PDF (full tax IDs)", exportedClient: "Exported client trust summary PDF" };
 // Retention: keep a deleted record's change history (no full tax IDs) as its audit trail.
 // Set to false only if the firm's retention rule calls for removing it with the record.
 const KEEP_HISTORY_ON_DELETE = true;
@@ -1082,16 +1082,15 @@ async function loadHistory(id, list) {
   } catch (e) { list.replaceChildren(el("li", { text: dbMsg(e) })); }
 }
 
-// Four-eyes review: someone other than the person who saved or last edited the record
-// confirms it against the document. Any later edit returns it to Draft (see save).
+// Review: anyone with Contributor access confirms the record against the document, including
+// the person who saved or last edited it (logged as a self-review in the change history).
+// Any later edit returns it to Draft (see save).
 async function markReviewed(btn) {
   if (!db || !current?.id) return;
   const d = current.data;
   if (dirty) { toast("Save your changes first. Saving returns the record to Draft."); return; }
   if (!myId) { toast("Your name couldn't be confirmed in this view, so the review can't be recorded."); return; }
-  if (myId === current.createdBy || myId === current.updatedBy) {
-    toast("A different teammate must review this. You saved or last edited it."); return;
-  }
+  const self = myId === current.createdBy || myId === current.updatedBy;
   const miss = missingForReview(d);
   if (miss.length) { toast(`Before marking reviewed, add ${miss.join("; ")}. Then save.`); return; }
   btn.disabled = true;
@@ -1100,7 +1099,7 @@ async function markReviewed(btn) {
     // Reviewing a version someone else just changed would approve content nobody checked.
     if (!(await freshIfUnchanged(current.id))) { btn.disabled = false; return; }
     await db.doc("extractions/" + current.id).update({ review });
-    const logged = await addHistory(current.id, { action: "reviewed" });
+    const logged = await addHistory(current.id, { action: self ? "reviewedSelf" : "reviewed" });
     d.review = review;
     toast(logged ? "Marked reviewed" : "Marked reviewed, but the change history couldn't be updated");
     renderEditor(); renderLog();
@@ -1213,7 +1212,7 @@ function clientBlocker(d) {
   const g = d.registration;
   if (!current?.id) return "Save the record to the team log first.";
   if (dirty) return "Save your changes first.";
-  if (!isReviewed(d)) return "Available once a second teammate marks the record Reviewed.";
+  if (!isReviewed(d)) return "Available once the record is marked Reviewed.";
   if (!/trust/i.test(g.registrationType)) return "The client summary is for trust registrations.";
   if (!str(g.trustName)) return "Add the trust name first.";
   if (!str(g.trustOverview)) return "Add the trust overview in Registration & titling (or Re-read the document), then save and review.";
