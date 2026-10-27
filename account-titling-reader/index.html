@@ -255,7 +255,7 @@ const DEATH_LINES = [
   ["First death", "what happens when the first grantor dies, including who then serves as trustee"],
   ["Becomes irrevocable", "when the trust, or any part of it, becomes irrevocable"],
   ["Separate trusts", "any division into separate trusts (survivor's, marital, QTIP, bypass or credit shelter, family, generation-skipping), when it happens, and who is trustee and who benefits from each"],
-  ["Last death", "what happens when the last grantor dies: outright distribution, continuing trusts (to what age or event) or pour-over to another trust"],
+  ["Last death", "what happens when the last grantor dies: outright distribution, continuing trusts (to what age or event) or pour-over to another trust; name only primary and contingent beneficiaries, and if an ultimate-taker or family-disaster clause exists, say so with its citation without naming its takers"],
   ["Power of appointment", "any power of appointment held by a grantor (including a general power over their own separate property), the surviving grantor or a beneficiary"]];
 const SUCC_LINES = [
   ["Surviving co-trustee", "whether a remaining co-trustee continues alone when another dies, resigns or becomes incapacitated"],
@@ -289,7 +289,7 @@ function blank() {
   return {
     household: "",
     source: { fileName: "", docType: "", docDate: "", documents: "", sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" },
-    registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", restatementDate: "", amendmentDates: "", governingState: "", accountNumber: "", signingAuthority: "", grantorDeath: "", trusteeSuccession: "", trustOverview: "" },
+    registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", restatementDate: "", amendmentDates: "", governingState: "", accountNumber: "", signingAuthority: "", grantorDeath: "", trusteeSuccession: "", deathProvisions: "", trustOverview: "" },
     parties: [],
     beneficiaries: [],
     flags: [],
@@ -509,7 +509,7 @@ function normalize(raw, fileName) {
   r.flags = (Array.isArray(raw.flags) ? raw.flags : []).map(str).filter(Boolean).slice(0, 30);
   r.fyi = (Array.isArray(raw.fyi) ? raw.fyi : []).map(str).filter(Boolean).slice(0, 30);
   // Succession lines sometimes come back as a list or as label/value pairs; store them as lines.
-  for (const k of ["grantorDeath", "trusteeSuccession"]) {
+  for (const k of ["grantorDeath", "trusteeSuccession", "deathProvisions"]) {
     const v = g[k];
     if (Array.isArray(v)) r.registration[k] = v.map(str).filter(Boolean).join("\n");
     else if (v && typeof v === "object") r.registration[k] = Object.entries(v).map(([a, b]) => `${a}: ${str(b)}`).join("\n");
@@ -759,7 +759,8 @@ function renderEditor() {
     el("p", { class: "small muted", text: "A summary of the document's provisions, not legal advice. Check it against the cited articles before marking the record reviewed; a custodian works from the trust pages themselves." }),
     el("div", { class: "grid" },
       textArea("When the grantors die", g, "grantorDeath", "f-death", DEATH_LINES.map(([l]) => l + ": ").join("\n")),
-      textArea("Trustee succession", g, "trusteeSuccession", "f-succ", SUCC_LINES.map(([l]) => l + ": ").join("\n"))
+      textArea("Trustee succession", g, "trusteeSuccession", "f-succ", SUCC_LINES.map(([l]) => l + ": ").join("\n")),
+      textArea("Other provisions triggered by a death", g, "deathProvisions", "f-deathprov", "One line per clause, e.g.\nRequirement of Survival (Art. VI.D, p.8): a beneficiary must survive the event by 30 days\nFamily Disaster (Art. VI.B, pp.6–8): if no beneficiary under Art. II survives, principal goes to the persons named there")
     ));
   succ.open = succOpen;
   succ.addEventListener("toggle", () => { succOpen = succ.open; });
@@ -1053,7 +1054,7 @@ const HIST_FIELDS = [["household", "Client / household"], ["source.docType", "Do
   ["registration.taxIdType", "Tax ID type"], ["registration.taxId", "Tax ID"], ["registration.trustName", "Trust / entity name"],
   ["registration.trustDate", "Trust date"], ["registration.restatementDate", "Most recent restatement"], ["registration.amendmentDates", "Amendments"], ["registration.governingState", "Governing state"], ["registration.accountNumber", "Source account #"],
   ["registration.signingAuthority", "Signing authority"], ["registration.grantorDeath", "When the grantors die"],
-  ["registration.trusteeSuccession", "Trustee succession"], ["registration.trustOverview", "Trust overview"], ["notes", "Team notes"]];
+  ["registration.trusteeSuccession", "Trustee succession"], ["registration.deathProvisions", "Other provisions triggered by a death"], ["registration.trustOverview", "Trust overview"], ["notes", "Team notes"]];
 const PARTY_FIELDS = [["role", "role(s)"], ["dob", "date of birth"], ["taxId", "SSN / TIN"], ["notes", "notes"], ["ref", "found on"]];
 const BENE_FIELDS = [["level", "level"], ["relationship", "relationship"], ["percentage", "share %"], ["dob", "date of birth"], ["taxId", "SSN / TIN"],
   ["perStirpes", "per stirpes"], ["notes", "notes"], ["ref", "found on"]];
@@ -1201,9 +1202,9 @@ function buildRecordPdf(d, meta) {
     ["Source account #", t(g.accountNumber)], ["Signing authority", t(g.signingAuthority)], ["Trust overview", t(g.trustOverview)],
   ], y, { 0: { cellWidth: 130, fontStyle: "bold" } });
 
-  if (str(g.grantorDeath) || str(g.trusteeSuccession)) {
+  if (str(g.grantorDeath) || str(g.trusteeSuccession) || str(g.deathProvisions)) {
     y = section("Succession", y);
-    y = table(["Field", "Value"], [["When the grantors die", t(g.grantorDeath)], ["Trustee succession", t(g.trusteeSuccession)]], y, { 0: { cellWidth: 130, fontStyle: "bold" } });
+    y = table(["Field", "Value"], [["When the grantors die", t(g.grantorDeath)], ["Trustee succession", t(g.trusteeSuccession)], ["Other provisions triggered by a death", t(g.deathProvisions)]], y, { 0: { cellWidth: 130, fontStyle: "bold" } });
   }
 
   y = section("Parties", y);
@@ -1340,6 +1341,9 @@ function buildClientPdf(d, meta) {
   const death = clientLines(g.grantorDeath, DEATH_LINES), succ = clientLines(g.trusteeSuccession, SUCC_LINES);
   if (death.length) { y = section("When the grantors pass away", y); y = facts(death, y); }
   if (succ.length) { y = section("Trustee succession", y); y = facts(succ, y); }
+  // One row per clause: "<clause name> (<citation>): <what it does>".
+  const provs = str(g.deathProvisions).split("\n").map(str).filter(Boolean).map(l => { const i = l.indexOf(": "); return i > 0 ? [maskText(l.slice(0, i)), maskText(l.slice(i + 2))] : ["", maskText(l)]; });
+  if (provs.length) { y = section("Other provisions triggered by a death", y); y = facts(provs, y); }
 
   const docsInFile = str(d.source.documents).split("\n").map(l => l.trim()).filter(Boolean);
   if (docsInFile.length) {
@@ -1697,6 +1701,7 @@ ${DEATH_LINES.map(([l, d]) => `  ${l}: <${d}>`).join("\n")}
 ${SUCC_LINES.map(([l, d]) => `  ${l}: <${d}>`).join("\n")}
   For a will: Successors in order lists the executors and alternates; the other lines as they apply.
 - Everyone named in "Successors in order" is also in parties, spelled the same way, with role "Successor trustee" (or "Executor / Personal representative") and their place ("1st successor") in notes.
+- deathProvisions: for the same documents as grantorDeath; "" otherwise. One line per clause that takes effect on anyone's death (a grantor, trustee, beneficiary or other person) and isn't already a grantorDeath or trusteeSuccession line, in document order, joined with "\\n": "<clause name> (<citation>): <what triggers it and what it does>". Include survival periods, lapse and per stirpes substitution, payment of taxes, debts and expenses at death, specific gifts at death, trusts that divide or end on a death, powers that start or end on a death, and any ultimate-taker, "family disaster" or heirs-at-law clause. For an ultimate-taker clause, say only that it exists and when it applies (e.g. "Family Disaster (Art. VI.B, pp.6–8): if no beneficiary under Article II survives, the principal goes to the persons named in this clause"); never list those persons or their shares. Keep each line to 200 characters or fewer.
 
 PARTIES
 - One entry per person. If a person holds several roles, list them all in that entry's role, separated by ", ", most important first (e.g. "Grantor, Trustee"). Roles: ${ROLES.join("; ")}. Their notes and ref cover every role (e.g. "Co-trustee now; sole trustee if the other trustor dies (Sec. 10.3)").
@@ -1709,7 +1714,7 @@ PARTIES
 BENEFICIARIES (who receives the assets when the owner or last grantor dies)
 - Do not list grantors as beneficiaries of their own revocable trust.
 - Primary: who takes first when the last owner or grantor dies. For an irrevocable trust with current income beneficiaries, list them as Primary and say "current beneficiary" in notes.
-- Contingent: who takes if a primary beneficiary does not survive, and any ultimate or "family disaster" takers. Say which in notes (e.g. "Ultimate taker if no other beneficiary survives (Art. VI.B)").
+- Contingent: who takes if a primary beneficiary does not survive (e.g. that beneficiary's descendants, or a named alternate). Stop there: do not list ultimate, "family disaster" or heirs-at-law takers, who take only when no primary or contingent beneficiary survives. Note in deathProvisions that such a clause exists, with its citation, without naming its takers.
 - A class gift such as "her then living descendants, per stirpes" is one entry, e.g. name "Descendants of Jane A. Doe", relationship "Descendants of primary beneficiary", perStirpes true.
 - Specific gifts of a fixed sum or a named item are not shares of the account; do not list them as beneficiaries.
 - percentage: the share of that level as a number. Convert shares (25 of 100 shares = 25). Split equal gifts evenly (2 decimals). A sole beneficiary is 100. Per-stirpes alternates inherit the share of the person they replace.
@@ -1722,10 +1727,10 @@ FYI (at most 4, informational, not blockers): things worth knowing that do not s
 
 HANDWRITING: list every handwritten fill-in that a field depends on (dates, day and month blanks, names, initials, numbers, checkboxes) in "handwriting": [{"page": 13, "area": "top", "what": "trust date in identification clause"}]. "page" is the PDF page number shown in this request (not the printed page number if they differ); "area" is "top", "middle" or "bottom" of that page (for a transcribed page, judge it from where the item falls in that page's text). List each once; there is no limit. Signatures need no entry unless a name must be read from one, and routine initials in a page footer need none. Use [] if there is no handwriting, or if the document came only as text.
 
-Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every succession line is present and either cited or marked Not addressed / Not applicable; everyone in "Successors in order" is in parties, in the same order as their notes; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
+Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every succession line is present and either cited or marked Not addressed / Not applicable; everyone in "Successors in order" is in parties, in the same order as their notes; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (for example, each child's descendants) are explained in their notes, not flagged; no ultimate, family-disaster or heirs-at-law taker is listed as a beneficiary.
 
 Reply with only JSON in exactly this shape:
-{"household":"","source":{"docType":"","docDate":"","documents":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
+{"household":"","source":{"docType":"","docDate":"","documents":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","deathProvisions":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
 
 const MAX_SCAN_PAGES = 150;   // scanned pages transcribed per document; beyond this, pages are named as unread, with the reason
 
@@ -1901,6 +1906,8 @@ const VERIFY_INTRO = `You are double-checking an extraction another reader made 
 - In grantorDeath and trusteeSuccession: every labeled line must be present. Open each article cited and confirm it says what the line claims; fix the line or its citation, or change it to "Not addressed in the pages read". Something the document only implies must use the "Implied by" form. Search the whole document before leaving a line "Not addressed"; for Power of appointment, look for every power of appointment, including a trustor's general power over their own separate property. Keep each line to 200 characters or fewer without dropping a name or citation.
 - Trust protectors, trust advisors and the drafting attorney are not parties: remove them from parties if listed.
 - trustOverview: every statement must match the corrected fields and the document; rewrite it if a field it repeats changed.
+- Beneficiaries: keep only primary and contingent beneficiaries. Remove any ultimate, family-disaster or heirs-at-law taker; make sure deathProvisions notes that clause (citation, when it applies) without naming its takers, and that grantorDeath doesn't name them either.
+- deathProvisions: search the whole document for every clause that takes effect on a death and add any that is missing, with its citation.
 - Remove anything the document does not support.
 - Change a value only when you can name the page that supports the new value. If the document is unclear, keep the original value rather than swapping one guess for another.
 - Do not reword notes, flags or FYI just for style, and do not count rewording as a correction.
@@ -1957,7 +1964,7 @@ function splitIntoParts(text, budget) {
   }));
 }
 
-const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), beneficiaries and shares, signing authority, governing law, amendments, the list of documents in the file (source.documents), signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. In grantorDeath and trusteeSuccession, replace a "Not addressed in the pages read" line when these pages address it, and never turn an answered line into "Not addressed". Page references keep the PDF page numbers shown here.`;
+const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), other provisions triggered by a death (deathProvisions), beneficiaries and shares, signing authority, governing law, amendments, the list of documents in the file (source.documents), signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. In grantorDeath and trusteeSuccession, replace a "Not addressed in the pages read" line when these pages address it, and never turn an answered line into "Not addressed". Page references keep the PDF page numbers shown here.`;
 
 // ---------- long documents: one read of the whole document ----------
 // A document too long for one request is first compacted (spacing, and typed lines repeated on
@@ -2098,7 +2105,7 @@ async function condenseText(text, budget, signal) {
 const MAX_LINE = 200;
 async function shortenLongLines(data, signal) {
   const g = data.registration, long = [];
-  for (const k of ["grantorDeath", "trusteeSuccession"]) g[k].split("\n").forEach((l, i) => { if (l.length > MAX_LINE) long.push({ k, i, l }); });
+  for (const k of ["grantorDeath", "trusteeSuccession", "deathProvisions"]) g[k].split("\n").forEach((l, i) => { if (l.length > MAX_LINE) long.push({ k, i, l }); });
   if (!long.length) return { fixed: 0, left: 0 };
   setBusy(`Shortening ${long.length} succession line${long.length > 1 ? "s" : ""} to ${MAX_LINE} characters…`);
   let got = null;
