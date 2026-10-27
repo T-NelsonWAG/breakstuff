@@ -156,6 +156,9 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
 .chip.ok { color: var(--ok); }
 /* Next to anything a Viewer can't use: saving needs Contributor access. */
 .chip.need { color: var(--warn); background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; cursor: help; }
+.doc-note { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 3px 3px 0; font-size: 14px; max-width: none; margin: 0; display: grid; gap: 6px; }
+.doc-note ol { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
+.doc-note .mono { color: var(--muted); font-size: 13px; display: inline-block; min-width: 3.2em; }
 .view-note { padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 0 3px 3px 0; font-size: 14px; max-width: none; }
 .log-when { font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .log-empty { padding: 20px 4px; color: var(--muted); font-size: 14px; border-bottom: 1px solid var(--rule); }
@@ -285,7 +288,7 @@ const str = (v) => (v == null ? "" : String(v).trim());
 function blank() {
   return {
     household: "",
-    source: { fileName: "", docType: "", docDate: "", sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" },
+    source: { fileName: "", docType: "", docDate: "", documents: "", sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" },
     registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", restatementDate: "", amendmentDates: "", governingState: "", accountNumber: "", signingAuthority: "", grantorDeath: "", trusteeSuccession: "", trustOverview: "" },
     parties: [],
     beneficiaries: [],
@@ -487,7 +490,7 @@ function normalize(raw, fileName) {
   raw = raw && typeof raw === "object" ? raw : {};
   r.household = str(raw.household);
   const s = raw.source || {};
-  r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" };
+  r.source = { fileName: fileName || "", docType: str(s.docType || raw.documentType), docDate: str(s.docDate || raw.documentDate), documents: Array.isArray(s.documents) ? s.documents.map(str).filter(Boolean).join("\n") : str(s.documents), sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" };
   const g = raw.registration || {};
   for (const k of Object.keys(r.registration)) r.registration[k] = str(g[k]);
   r.parties = mergeParties((Array.isArray(raw.parties) ? raw.parties : []).map(p => {
@@ -650,6 +653,35 @@ function textArea(label, obj, key, id, placeholder) {
   return el("label", { class: "f span-all" }, el("span", { text: label }), box);
 }
 
+// What the file holds, at the top of the record: one line for a single document; for several,
+// each document with the page it starts on and whether it's still in force (from source.documents).
+function parseDocLine(line) {
+  const l = str(line).replace(/^\d+\)\s*/, "");
+  const title = l.split(/:\s/)[0];
+  const start = (l.match(/\bpp?\.\s?(\d+)/) || [])[1] || "";
+  const dated = (l.match(/\bdated (\d{4}-\d{2}-\d{2}|date not stated)/i) || [])[1] || "";
+  const status = l.includes(";") ? str(l.slice(l.lastIndexOf(";") + 1)) : "";
+  return { title, start, dated, status };
+}
+function documentsNotice(d) {
+  const lines = str(d.source.documents).split("\n").map(str).filter(Boolean);
+  if (lines.length < 2) {
+    const what = str(d.source.docType);
+    if (!what && !lines.length) return null;
+    const one = lines.length ? parseDocLine(lines[0]) : { title: what, dated: str(d.source.docDate) };
+    return el("p", { class: "doc-note", id: "docNote" }, el("strong", { text: "This file holds 1 document: " }),
+      `${one.title || what}${one.dated ? `, dated ${one.dated}` : ""}.`);
+  }
+  const docs = lines.map(parseDocLine);
+  const inForce = docs.filter(x => /in force/i.test(x.status)).map(x => x.title);
+  return el("div", { class: "doc-note", id: "docNote" },
+    el("p", {}, el("strong", { text: `This file holds ${docs.length} documents.` }),
+      inForce.length ? ` In force: ${inForce.join("; ")}. Check that the record follows ${inForce.length > 1 ? "those" : "that one"}.` : " Check which one is in force before relying on the record."),
+    el("ol", {}, docs.map(x => el("li", {},
+      el("span", { class: "mono", text: x.start ? `p.${x.start}` : "p.?" }), " ",
+      el("span", { text: `${x.title}${x.dated ? `, dated ${x.dated}` : ""}${x.status ? ` (${x.status})` : ""}` })))));
+}
+
 function renderEditor() {
   const ed = $("editor");
   ed.replaceChildren();
@@ -668,6 +700,8 @@ function renderEditor() {
   );
   ed.append(head);
   if (!isNew) fillMeta();
+  const docNote = documentsNotice(d);
+  if (docNote) ed.append(docNote);
 
   // source
   const src = el("div", { class: "group" }, el("h3", { text: "Client & source" }),
@@ -692,6 +726,8 @@ function renderEditor() {
     isNew && current.reused && lastFile && sample ? el("div", {}, el("button", { class: "linkbtn", type: "button", id: "freshBtn", text: "Read this file from scratch instead",
       onclick: () => handleFile(lastFile, true) })) : null,
     !isNew && sample && !d.source.textSaved ? el("p", { class: "small muted", text: "The document text wasn't kept for this record (it was read from page images, or saved before Re-read existed). To read it again, upload the document." }) : null,
+    // Files holding several documents: each one with its dates, pages and whether it's still in force.
+    textArea("Documents in this file, with their dates", d.source, "documents", "f-docs", "Only when the file holds more than one document, e.g.\n1) Trust agreement: dated 2000-06-23, pp.50–69; replaced by 2)\n2) Amendment and restatement: dated 2013-07-01, signed 2013-07-26, pp.1–31; in force"),
     checkNote(d.check)
   );
   ed.append(src);
@@ -1012,7 +1048,7 @@ async function freshIfUnchanged(id) {
 
 // ---------- change history: extractions/<id>/history ----------
 // Tax IDs and account numbers are stored masked to the last 4 digits.
-const HIST_FIELDS = [["household", "Client / household"], ["source.docType", "Document type"], ["source.docDate", "Document date"],
+const HIST_FIELDS = [["household", "Client / household"], ["source.docType", "Document type"], ["source.docDate", "Document date"], ["source.documents", "Documents in this file"],
   ["source.sharepointUrl", "SharePoint link"], ["registration.accountTitle", "Account title"], ["registration.registrationType", "Registration type"],
   ["registration.taxIdType", "Tax ID type"], ["registration.taxId", "Tax ID"], ["registration.trustName", "Trust / entity name"],
   ["registration.trustDate", "Trust date"], ["registration.restatementDate", "Most recent restatement"], ["registration.amendmentDates", "Amendments"], ["registration.governingState", "Governing state"], ["registration.accountNumber", "Source account #"],
@@ -1151,6 +1187,11 @@ function buildRecordPdf(d, meta) {
   ]) { doc.text(doc.splitTextToSize(line, W - 2 * M), M, y); y += 13; }
   chrome();
 
+  if (str(d.source.documents)) {
+    y = section("Documents in this file", y + 8);
+    y = table(["Document, dates, pages and status"], str(d.source.documents).split("\n").filter(l => l.trim()).map(l => [maskText(l.trim())]), y);
+    y -= 8;
+  }
   y = section("Registration & titling", y + 8);
   const g = d.registration;
   y = table(["Field", "Value"], [
@@ -1299,6 +1340,13 @@ function buildClientPdf(d, meta) {
   const death = clientLines(g.grantorDeath, DEATH_LINES), succ = clientLines(g.trusteeSuccession, SUCC_LINES);
   if (death.length) { y = section("When the grantors pass away", y); y = facts(death, y); }
   if (succ.length) { y = section("Trustee succession", y); y = facts(succ, y); }
+
+  const docsInFile = str(d.source.documents).split("\n").map(l => l.trim()).filter(Boolean);
+  if (docsInFile.length) {
+    y = section("Documents reviewed", y);
+    for (const l of docsInFile) y = para(maskText(l).replace(/\b(\d{4}-\d{2}-\d{2})\b/g, (m) => longDate(m)), y) + 2;
+    y += 10;
+  }
 
   y = section("Review", y);
   y = para(`Reviewed by ${meta.reviewedBy}, Winthrop Wealth, on ${meta.reviewedAt}.`, y);
@@ -1634,6 +1682,7 @@ REGISTRATION
 - signingAuthority: who may sign or act for the account and whether any one of them may act alone, citing the provision (e.g. "Either co-trustee may act alone (Art. VI.P)"). For a statement: the owners, and "joint" if joint.
 - trustOverview: for a trust agreement, amendment, restatement or certification of trust, 3 or 4 plain-English sentences a client can read: the trust's name and date, who created it, who manages it now and whether one trustee may act alone, and in broad terms what happens when the grantors die and who would take over as trustee. State only what the document says, in the same facts as the fields above. No legal or tax advice, no recommendations, no tax IDs or account numbers, no citations. "" for every other document.
 - source.docType: one of ${DOC_TYPES.join("; ")}. A restatement that replaces the whole trust agreement, or a file holding a restatement together with older versions, is "Trust agreement"; "Trust amendment" is only a document that changes some provisions of an agreement. source.docDate: the date the document was signed or, for a statement, the statement period end.
+- source.documents: when the file holds more than one document (an original trust agreement, restatements, amendments, a certification or abstract of trust, schedules, a will, and so on), list every one in the order it appears, one per line joined with "\\n": "<n>) <document type and title>: dated YYYY-MM-DD[, signed YYYY-MM-DD][, notarized YYYY-MM-DD], pp.<first>–<last>; <status>". Status is one of "in force", "replaced by <n>)", "amends <n>)", "amended by <n>)", or "summarizes <n>)" (for a certification or abstract). Give only dates the document states; write "date not stated" for a missing one. "" when the file holds a single document.
 
 SUCCESSION: grantorDeath and trusteeSuccession, for a trust agreement, amendment, restatement, certification of trust or will; "" for every other document. Each is a fixed list of labeled lines, in the order below, one per line, joined with "\\n". Every line appears, even when its answer is "Not addressed in the pages read".
 - Each line's answer is exactly one of: what the document states, with its citation, e.g. "(Art. V.B, p.7)"; "Implied by <citation>: <what>; not stated outright", when it only follows from the wording; "Not addressed in the pages read"; or "Not applicable: <why>" (e.g. "Not applicable: one grantor").
@@ -1676,7 +1725,7 @@ HANDWRITING: list every handwritten fill-in that a field depends on (dates, day 
 Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every succession line is present and either cited or marked Not addressed / Not applicable; everyone in "Successors in order" is in parties, in the same order as their notes; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
 
 Reply with only JSON in exactly this shape:
-{"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
+{"household":"","source":{"docType":"","docDate":"","documents":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
 
 const MAX_SCAN_PAGES = 150;   // scanned pages transcribed per document; beyond this, pages are named as unread, with the reason
 
@@ -1848,7 +1897,7 @@ function sampleMsg(e) {
 
 const VERIFY_INTRO = `You are double-checking an extraction another reader made from the document below. Check every value against the document itself, page by page:
 - Fix anything wrong: misread names, initials, dates, numbers, percentages, roles, beneficiary levels, the account title.
-- Add anything missed: parties, successor trustees, beneficiaries, signing authority, what happens on the grantors' deaths (grantorDeath), trustee succession (trusteeSuccession), handwritten spots in "handwriting".
+- Add anything missed: parties, successor trustees, beneficiaries, signing authority, what happens on the grantors' deaths (grantorDeath), trustee succession (trusteeSuccession), handwritten spots in "handwriting", and any document in the file missing from source.documents (check each one's dates, pages and status).
 - In grantorDeath and trusteeSuccession: every labeled line must be present. Open each article cited and confirm it says what the line claims; fix the line or its citation, or change it to "Not addressed in the pages read". Something the document only implies must use the "Implied by" form. Search the whole document before leaving a line "Not addressed"; for Power of appointment, look for every power of appointment, including a trustor's general power over their own separate property. Keep each line to 200 characters or fewer without dropping a name or citation.
 - Trust protectors, trust advisors and the drafting attorney are not parties: remove them from parties if listed.
 - trustOverview: every statement must match the corrected fields and the document; rewrite it if a field it repeats changed.
@@ -1908,7 +1957,7 @@ function splitIntoParts(text, budget) {
   }));
 }
 
-const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), beneficiaries and shares, signing authority, governing law, amendments, signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. In grantorDeath and trusteeSuccession, replace a "Not addressed in the pages read" line when these pages address it, and never turn an answered line into "Not addressed". Page references keep the PDF page numbers shown here.`;
+const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), beneficiaries and shares, signing authority, governing law, amendments, the list of documents in the file (source.documents), signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. In grantorDeath and trusteeSuccession, replace a "Not addressed in the pages read" line when these pages address it, and never turn an answered line into "Not addressed". Page references keep the PDF page numbers shown here.`;
 
 // ---------- long documents: one read of the whole document ----------
 // A document too long for one request is first compacted (spacing, and typed lines repeated on
