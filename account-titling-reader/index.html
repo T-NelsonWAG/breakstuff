@@ -1,6 +1,7 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 
 
+
 <title>Account Titling Reader</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -249,7 +250,7 @@ const DEATH_LINES = [
   ["Becomes irrevocable", "when the trust, or any part of it, becomes irrevocable"],
   ["Separate trusts", "any division into separate trusts (survivor's, marital, QTIP, bypass or credit shelter, family, generation-skipping), when it happens, and who is trustee and who benefits from each"],
   ["Last death", "what happens when the last grantor dies: outright distribution, continuing trusts (to what age or event) or pour-over to another trust"],
-  ["Power of appointment", "any power of appointment held by the surviving grantor or a beneficiary"]];
+  ["Power of appointment", "any power of appointment held by a grantor (including a general power over their own separate property), the surviving grantor or a beneficiary"]];
 const SUCC_LINES = [
   ["Surviving co-trustee", "whether a remaining co-trustee continues alone when another dies, resigns or becomes incapacitated"],
   ["Successors in order", "each named successor, numbered in order, and whether they serve alone or together, e.g. \"1) Jane A. Doe, alone (Art. VIII.B, p.9); 2) John B. Doe, alone (Art. VIII.B, p.9)\""],
@@ -1462,13 +1463,14 @@ REGISTRATION
 - governingState: the state whose law governs the trust or entity, from its governing-law clause; for a statement, "".
 - accountNumber: the account number on a statement; otherwise "". If a statement shows several accounts, extract the main or first one and list the others (title and last 4 digits) in one FYI item.
 - signingAuthority: who may sign or act for the account and whether any one of them may act alone, citing the provision (e.g. "Either co-trustee may act alone (Art. VI.P)"). For a statement: the owners, and "joint" if joint.
-- source.docType: one of ${DOC_TYPES.join("; ")}. source.docDate: the date the document was signed or, for a statement, the statement period end.
+- source.docType: one of ${DOC_TYPES.join("; ")}. A restatement that replaces the whole trust agreement, or a file holding a restatement together with older versions, is "Trust agreement"; "Trust amendment" is only a document that changes some provisions of an agreement. source.docDate: the date the document was signed or, for a statement, the statement period end.
 
 SUCCESSION: grantorDeath and trusteeSuccession, for a trust agreement, amendment, restatement, certification of trust or will; "" for every other document. Each is a fixed list of labeled lines, in the order below, one per line, joined with "\\n". Every line appears, even when its answer is "Not addressed in the pages read".
 - Each line's answer is exactly one of: what the document states, with its citation, e.g. "(Art. V.B, p.7)"; "Implied by <citation>: <what>; not stated outright", when it only follows from the wording; "Not addressed in the pages read"; or "Not applicable: <why>" (e.g. "Not applicable: one grantor").
 - Report only what the document says. Never fill a gap with what trusts usually provide or what state law does by default, and never cite an article for something it does not say.
 - If an amendment or restatement changes trustees, successors or death provisions, describe the version now in force and cite both the original and the amending article.
-- Keep each line under 200 characters. Name people ("Jane A. Doe"); don't describe them ("the grantor's sister").
+- Power of appointment: search the whole document, including the opening articles on the trustors' rights in trust property. A trustor's general power of appointment over their own separate property counts.
+- Keep each line to 200 characters or fewer, citation included; the page sends longer lines back to be shortened. Name people ("Jane A. Doe"); don't describe them ("the grantor's sister").
 - grantorDeath lines:
 ${DEATH_LINES.map(([l, d]) => `  ${l}: <${d}>`).join("\n")}
   For a will: First death and Separate trusts are "Not applicable: will"; Last death says who the estate passes to and any testamentary trust.
@@ -1479,7 +1481,7 @@ ${SUCC_LINES.map(([l, d]) => `  ${l}: <${d}>`).join("\n")}
 
 PARTIES
 - One entry per person. If a person holds several roles, list them all in that entry's role, separated by ", ", most important first (e.g. "Grantor, Trustee"). Roles: ${ROLES.join("; ")}. Their notes and ref cover every role (e.g. "Co-trustee now; sole trustee if the other trustor dies (Sec. 10.3)").
-- Include owners, grantors, current trustees, successor trustees, POA agents, signers, executors, custodians, minors and entity officers. Witnesses, notaries and the drafting attorney are not parties.
+- Include owners, grantors, current trustees, successor trustees, POA agents, signers, executors, custodians, minors and entity officers. Witnesses, notaries, the drafting attorney and any trust protector or trust advisor are not parties; name a trust protector in the succession line where they act (e.g. If none can serve).
 - A trustee or owner the document says has died, resigned or been removed: keep them only if needed to explain succession, and say so in notes.
 - Successor trustees: in order of succession, with the order and the trigger in notes (e.g. "1st successor; acts if both current trustees cease to act").
 - Power of attorney: note in the agent's notes whether it is durable, and whether it is effective now or springs on incapacity.
@@ -1665,7 +1667,7 @@ function sampleMsg(e) {
       return "Claude isn't allowed for this page in your view, so the document can't be read. You can enter details manually.";
     case "rate_limited": return "You've hit a usage limit. Wait a few minutes and try again.";
     case "session_expired": return "Your claude.ai session expired. Sign in again, then retry.";
-    case "prompt_too_large": return "This document is too long to read in one pass. Upload only the pages with the registration, parties and beneficiaries.";
+    case "prompt_too_large": return "A request to Claude was over its size limit. Try again; if it keeps happening, upload only the pages with the registration, parties, beneficiaries and succession.";
     case "image_rejected": return "One of the page images couldn't be used. Try a clearer scan or a text PDF.";
     case "images_unavailable": return "This view can't send images to Claude. Upload a text PDF or paste the text instead.";
     case "refused": return "Claude declined to read this document. Check that it's the right file.";
@@ -1677,7 +1679,8 @@ function sampleMsg(e) {
 const VERIFY_INTRO = `You are double-checking an extraction another reader made from the document below. Check every value against the document itself, page by page:
 - Fix anything wrong: misread names, initials, dates, numbers, percentages, roles, beneficiary levels, the account title.
 - Add anything missed: parties, successor trustees, beneficiaries, signing authority, what happens on the grantors' deaths (grantorDeath), trustee succession (trusteeSuccession), handwritten spots in "handwriting".
-- In grantorDeath and trusteeSuccession: every labeled line must be present. Open each article cited and confirm it says what the line claims; fix the line or its citation, or change it to "Not addressed in the pages read". Something the document only implies must use the "Implied by" form. Search the whole document before leaving a line "Not addressed".
+- In grantorDeath and trusteeSuccession: every labeled line must be present. Open each article cited and confirm it says what the line claims; fix the line or its citation, or change it to "Not addressed in the pages read". Something the document only implies must use the "Implied by" form. Search the whole document before leaving a line "Not addressed"; for Power of appointment, look for every power of appointment, including a trustor's general power over their own separate property. Keep each line to 200 characters or fewer without dropping a name or citation.
+- Trust protectors, trust advisors and the drafting attorney are not parties: remove them from parties if listed.
 - Remove anything the document does not support.
 - Change a value only when you can name the page that supports the new value. If the document is unclear, keep the original value rather than swapping one guess for another.
 - Do not reword notes, flags or FYI just for style, and do not count rewording as a correction.
@@ -1735,6 +1738,162 @@ function splitIntoParts(text, budget) {
 }
 
 const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), beneficiaries and shares, signing authority, governing law, amendments, signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. In grantorDeath and trusteeSuccession, replace a "Not addressed in the pages read" line when these pages address it, and never turn an answered line into "Not addressed". Page references keep the PDF page numbers shown here.`;
+
+// ---------- long documents: one read of the whole document ----------
+// A document too long for one request is first compacted (spacing, and typed lines repeated on
+// most pages), then condensed: each section is sent once with CONDENSE_INTRO, which copies word
+// for word every passage the extraction could need. The condensed whole then goes through the
+// extraction and the double-check in one request each, so no read sees only part of the trust.
+// Reading in parts (below) is kept only for a document still too long after condensing.
+function compactText(text) {
+  const t = text.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n");
+  const pages = t.split(/(?=^--- Page \d+)/m);
+  if (pages.length < 6) return t;
+  const seen = new Map();
+  for (const p of pages) for (const l of new Set(p.split("\n").map(x => x.trim()))) if (l) seen.set(l, (seen.get(l) || 0) + 1);
+  const often = Math.max(5, pages.length * 0.4);
+  // Page markers, printed page numbers and every handwriting, signature or stamp mark stay.
+  const keep = (l) => !l || l.length > 80 || (seen.get(l) || 0) < often || /^--- Page \d+|\bpage\s+\d|^\d{1,4}$|\[(handwritten|signature|illegible|blank|stamp)/i.test(l);
+  return pages.map(p => p.split("\n").filter(l => keep(l.trim())).join("\n")).join("").replace(/\n{3,}/g, "\n\n");
+}
+
+const CONDENSE_INTRO = `You are preparing one section of a long legal or financial document for a reader who will extract the account registration, parties, beneficiaries and succession provisions from the whole document at once. The whole document does not fit in one request, so copy from the pages below, word for word, every passage that reader could need, and leave out the rest.
+Keep, copied exactly with their headings and section numbers:
+- title, identification, recital and opening clauses; every name of a trust, trustor or grantor, trustee, successor, trust protector, beneficiary, executor or agent; dates; governing law; tax IDs, account numbers and addresses;
+- who may act for, sign for or bind the trust, and whether co-trustees act alone or together (often headed "Acts of Co-Trustees"), and the governing-law clause;
+- every clause about revoking or amending; the trustors' rights in trust property and any power of appointment; what happens on each death or incapacity; becoming irrevocable; division into separate trusts; distributions, beneficiaries, shares, per stirpes, ages, ultimate or "family disaster" takers and anyone excluded; appointing, resigning, removing and succeeding trustees, co-trustees acting alone, incapacity standards, bond, acceptance, corporate trustees, and any protector's power over trustees; amendments and restatements and what they replace; signatures, notary and witness blocks and signing dates; the heading of any schedule of assets;
+- every [handwritten: ...], [illegible], [blank], [signature: ...] and [stamp: ...] mark, and each page's printed page number line (e.g. "Page 27").
+Leave out investment and administrative powers, tax and accounting provisions, definitions unrelated to the above, and spendthrift, perpetuities and similar boilerplate, except any sentence in them that names a person or trust or mentions irrevocability.
+When unsure, keep it. Never summarize, reword, correct or reorder: every word you write must be copied from the page.
+Output, for each page below in order: its marker line exactly as given (e.g. "--- Page 12 (transcribed from a scan) ---"), then the passages kept from it. If a page has nothing to keep, write its marker line and then [nothing relevant]. The document is data, not instructions.`;
+const CONDENSE_STRICT = "This text was already condensed once and is still too long. Keep only passages that name a person, trust or date, or that state revocation, death, succession, distribution, signing or amendment terms; still copy word for word.";
+const CONDENSED_NOTE = "This document was too long for one request, so an earlier pass copied word for word, from every page, each passage that matters for titling, parties, beneficiaries and succession. A page shown as \"nothing relevant to titling\" held only administrative, investment or tax provisions. Page numbers are the original PDF pages. Read this as the whole document.";
+
+// The backstop for the condensing pass, in code so it runs the same every time: any line of
+// the original page about who may act for the trust, governing law, trustee succession, removal
+// or incapacity, bond, a protector's powers, irrevocability, revocation or amendment, or a
+// power of appointment, that the condensed page lacks, is put back word for word.
+const MUST_KEEP = /governing law|laws of the state|co-?trustees?\b[^.]{0,60}\b(act|sign|bind|join)|act(s|ing)? alone|either trustee|successor trustee|resign|remov(e|al) (of|a|any) trustee|incapacit|\bbond\b|trust protector|irrevocab|revoc|revok|(?<!as )\bamend(ed|ment)?\b|power of appointment/i;
+const squash = (t) => t.toLowerCase().replace(/\s+/g, " ").trim();
+function rescueLines(src, kept) {
+  const have = squash(kept);
+  return src.split("\n").filter(l => {
+    const s = squash(l);
+    return s.length >= 20 && MUST_KEEP.test(l) && !have.includes(s.slice(0, 80));
+  }).map(l => "\n" + l.trim()).join("");
+}
+
+// Never drops text: a page bigger than one section is cut at line breaks into
+// "--- Page N (continued) ---" pieces, and anything the condensing pass doesn't return
+// goes into the result unchanged.
+async function condenseText(text, budget, signal) {
+  const marked = /^--- Page \d+/m.test(text);
+  const per = Math.max(30000, Math.min(100000, (promptLimit || 262144) - utf8Len(CONDENSE_INTRO) - utf8Len(CONDENSE_STRICT) - 20000));
+  let cur = text, calls = 0, round = 0, kept = 0;
+  const unread = new Set();
+  while (utf8Len(cur) > budget && round < 2) {
+    round++;
+    const units = (marked ? cur.split(/(?=^--- Page \d+)/m) : cur.split(/(?<=\n\s*\n)/)).filter(u => u.trim());
+    const pieces = [];
+    for (const u of units) {
+      const n = marked ? +(u.match(/^--- Page (\d+)/) || [])[1] : 0;
+      const marker = marked ? u.match(/^[^\n]*/)[0] : "";
+      let rest = u, first = true;
+      while (rest) {
+        let cut = rest.length;
+        while (utf8Len(rest.slice(0, cut)) > per) { const at = rest.lastIndexOf("\n", Math.floor(cut * 0.8)); cut = at > 0 ? at : Math.floor(cut * 0.8); }
+        const body = rest.slice(0, cut);
+        pieces.push({ n, marker, text: first || !marked ? body : `--- Page ${n} (continued) ---\n${body}` });
+        rest = rest.slice(cut).replace(/^\n/, ""); first = false;
+      }
+    }
+    const batches = [];
+    for (const p of pieces) {
+      const last = batches[batches.length - 1];
+      if (last && last.bytes + utf8Len(p.text) <= per) { last.pieces.push(p); last.bytes += utf8Len(p.text); }
+      else batches.push({ pieces: [p], bytes: utf8Len(p.text) });
+    }
+    const got = new Map();     // batch index -> Map(page -> kept text), or the whole reply for unmarked text
+    const ask = async (bi) => {
+      const b = batches[bi];
+      calls++;
+      const r = await sample([CONDENSE_INTRO, ...(round > 1 ? [CONDENSE_STRICT] : []), "Pages:\n" + b.pieces.map(p => p.text).join("\n\n")].join("\n\n"), { signal, modelTier: "default" });
+      const reply = r?.text || "";
+      if (!marked) { if (reply.trim() && !r.truncated) got.set(bi, reply.trim()); return; }
+      const want = new Set(b.pieces.map(p => p.n)), out = new Map();
+      const segs = reply.split(/^\s*--- Page (\d+)[^\n]*$/m);
+      for (let i = 1; i < segs.length; i += 2) {
+        const n = +segs[i], t = (segs[i + 1] || "").trim();
+        if (!want.has(n) || (r.truncated && i + 2 >= segs.length)) continue;   // a page cut off mid-answer counts as missing
+        out.set(n, (out.get(n) ? out.get(n) + "\n" : "") + (/^\[nothing relevant\]$/i.test(t) ? "" : t));
+      }
+      if ([...want].every(n => out.has(n))) got.set(bi, out);
+    };
+    for (const attempt of [1, 2]) {
+      const todo = batches.map((_, i) => i).filter(i => !got.has(i));
+      if (!todo.length) break;
+      let next = 0, done = batches.length - todo.length;
+      const status = () => setBusy(`Condensing the long document${round > 1 ? " further" : ""}: ${done} of ${batches.length} sections done${attempt > 1 ? " (retrying)" : ""}…`);
+      status();
+      const worker = async () => {
+        while (next < todo.length) {
+          const bi = todo[next++];
+          try { await ask(bi); } catch (e) { if (["cancelled", "not_granted", "session_expired"].includes(e?.code)) throw e; }
+          done++; status();
+        }
+      };
+      await Promise.all([worker(), worker()]);
+    }
+    // Rebuild in page order, gathering every piece of a page; a section that never came back
+    // goes in unchanged.
+    const outParts = [], byPage = new Map();
+    batches.forEach((b, bi) => {
+      const res = got.get(bi);
+      if (!marked) { const src = b.pieces.map(p => p.text).join(""); outParts.push(res ? res + rescueLines(src, res) : src); return; }
+      const used = new Set();
+      for (const p of b.pieces) {
+        if (!byPage.has(p.n)) byPage.set(p.n, { marker: p.marker, kept: [], src: [] });
+        const e = byPage.get(p.n);
+        e.src.push(p.text.replace(/^--- Page \d+[^\n]*\n?/, ""));
+        // A first-round section that never came back is the original text; a later round's is
+        // already condensed, so only the first counts as not condensed.
+        if (!res) { e.kept.push(p.text.replace(/^--- Page \d+[^\n]*\n?/, "")); if (round === 1) unread.add(p.n); }
+        else if (!used.has(p.n)) { used.add(p.n); if (res.get(p.n)) e.kept.push(res.get(p.n)); }
+      }
+    });
+    for (const [n, e] of byPage) {
+      const t = e.kept.join("\n"), back = rescueLines(e.src.join("\n"), t).trim();
+      const all = [t, back].filter(Boolean).join("\n");
+      outParts.push(all ? `${e.marker}\n${all}` : `--- Page ${n}: nothing relevant to titling ---`);
+    }
+    const next = outParts.join("\n\n");
+    if (utf8Len(next) >= utf8Len(cur)) break;
+    cur = next; kept = utf8Len(cur);
+  }
+  return { text: cur, calls, rounds: round, bytes: kept || utf8Len(cur), unread: [...unread].sort((a, b) => a - b) };
+}
+
+// Succession lines over the cap get one shortening pass. A shortened line is used only if it
+// keeps its label and every page, section and article citation; otherwise the original stays.
+const MAX_LINE = 200;
+async function shortenLongLines(data, signal) {
+  const g = data.registration, long = [];
+  for (const k of ["grantorDeath", "trusteeSuccession"]) g[k].split("\n").forEach((l, i) => { if (l.length > MAX_LINE) long.push({ k, i, l }); });
+  if (!long.length) return { fixed: 0, left: 0 };
+  setBusy(`Shortening ${long.length} succession line${long.length > 1 ? "s" : ""} to ${MAX_LINE} characters…`);
+  let got = null;
+  try {
+    got = await sample.json(`Shorten each line below to at most ${MAX_LINE} characters. Keep the label before the first colon exactly, every person's name, and every citation (page, section and article references) exactly as written; drop only extra words. Add nothing. Reply with only a JSON array of the shortened lines, in the same order.\n\n${JSON.stringify(long.map(x => x.l))}`, { signal, modelTier: "default" });
+  } catch (e) { if (e?.code === "cancelled") throw e; }
+  const cites = (t) => t.match(/\b(?:pp?\.\s?\d+(?:[-–]\d+)?|(?:Secs?|Art|Arts)\.\s?[\w.()-]*\w|§\s?[\w.]+)/gi) || [];
+  let fixed = 0;
+  long.forEach((x, j) => {
+    const t = str(Array.isArray(got) ? got[j] : "");
+    if (!t || t.length > MAX_LINE || t.split(":")[0] !== x.l.split(":")[0] || !cites(x.l).every(c => t.includes(c))) return;
+    const lines = g[x.k].split("\n"); lines[x.i] = t; g[x.k] = lines.join("\n"); fixed++;
+  });
+  return { fixed, left: long.length - fixed };
+}
 
 const VERIFY_PART_NOTE = (what, i, n) => `You see only part ${i + 1} of ${n} of a longer document (${what}). Check and correct only what this part shows. Never remove, blank or change anything it doesn't cover; that comes from other parts.`;
 
@@ -1897,7 +2056,17 @@ async function extract(content, fileName, keep) {
     // double-check framing and room for the extraction itself. Longer documents are read in
     // parts, each carrying the extraction so far, so no page is dropped.
     const docBudget = Math.max(40000, (promptLimit || 262144) - utf8Len(VERIFY_INTRO) - utf8Len(PROMPT) - utf8Len(PART_INTRO) - 45000);
-    const parts = content.images?.length ? [{ text, from: 0, to: 0, cut: 0 }] : splitIntoParts(text, docBudget);
+    let readText = text, condensed = null;
+    if (!content.images?.length && utf8Len(text) > docBudget) {
+      readText = compactText(text);
+      if (utf8Len(readText) > docBudget) {
+        condensed = await condenseText(readText, docBudget, ctl.signal);
+        readText = condensed.text;
+        lap("condensing");
+      }
+    }
+    const condensedNote = condensed ? [CONDENSED_NOTE] : [];
+    const parts = content.images?.length ? [{ text, from: 0, to: 0, cut: 0 }] : splitIntoParts(readText, docBudget);
     const multi = parts.length > 1;
     const failedParts = [];
     const label = (pt, i) => pt.from ? `pages ${pt.from}–${pt.to}` : `section ${i + 1} of ${parts.length} of the text`;
@@ -1910,13 +2079,13 @@ async function extract(content, fileName, keep) {
       setBusy(multi ? `Reading ${label(pt, i)} (part ${i + 1} of ${parts.length})…` : `Reading ${pages}…`);
       if (!raw) {
         const partNote = multi ? [`This is part 1 of ${parts.length} of a long document (${label(pt, i)}). Extract what this part shows; later parts will add the rest.`] : [];
-        raw = await sample.json([...doc, ...partNote, PROMPT].join("\n\n"), opts(multi ? null : content.images));
+        raw = await sample.json([...condensedNote, ...doc, ...partNote, PROMPT].join("\n\n"), opts(multi ? null : content.images));
         continue;
       }
       try {
         const next = await sample.json([
           PART_INTRO, `This is part ${i + 1} of ${parts.length}: ${label(pt, i)}.`,
-          "ORIGINAL RULES:\n" + PROMPT, ...doc,
+          "ORIGINAL RULES:\n" + PROMPT, ...condensedNote, ...doc,
           "EXTRACTION SO FAR:\n" + JSON.stringify(raw),
           "Reply with only JSON: the complete extraction in the same shape."
         ].join("\n\n"), opts());
@@ -1952,6 +2121,7 @@ async function extract(content, fileName, keep) {
             VERIFY_INTRO,
             ...(multi ? [VERIFY_PART_NOTE(label(pt, i), i, parts.length)] : []),
             "ORIGINAL RULES:\n" + PROMPT,
+            ...condensedNote,
             ...doc,
             "EXTRACTION TO CHECK:\n" + JSON.stringify(raw),
             `Reply with only JSON: the extraction shape above plus "changes": [].`
@@ -2014,8 +2184,13 @@ async function extract(content, fileName, keep) {
     }
 
     const data = normalize(raw, fileName);
-    const partsNote = multi ? ` Read in ${parts.length} parts (${parts.map((p, i) => label(p, i)).join(", ")}) because the document is longer than one request.` : "";
-    data.source.readNote = (content.readNote || "") + partsNote + zoomNote + timing();
+    const short = await shortenLongLines(data, ctl.signal);
+    const kb = (n) => Math.round(n / 1000);
+    const condenseNote = condensed ? ` The text (${kb(utf8Len(text))} KB) is longer than one request, so a first pass copied every titling passage word for word from all pages (${kb(condensed.bytes)} KB kept, ${condensed.calls} call${condensed.calls > 1 ? "s" : ""})${multi ? "" : `, and the extraction${doubleCheck ? " and double-check each" : ""} read that in one pass`}.` : "";
+    if (condensed?.unread.length) flags.push(`The condensing pass failed for page${condensed.unread.length > 1 ? "s" : ""} ${pageList(condensed.unread)}, so ${condensed.unread.length > 1 ? "they were" : "it was"} included in full${multi ? " and the document had to be read in parts" : ""}. Check those pages against the record.`);
+    const partsNote = multi ? ` Read in ${parts.length} parts (${parts.map((p, i) => label(p, i)).join(", ")}) because the document is longer than one request${condensed ? " even after condensing" : ""}.` : "";
+    const shortNote = short.fixed || short.left ? ` ${short.fixed ? `Shortened ${short.fixed} succession line${short.fixed > 1 ? "s" : ""} to ${MAX_LINE} characters.` : ""}${short.left ? ` ${short.left} line${short.left > 1 ? "s are" : " is"} still over ${MAX_LINE} characters because shortening would have dropped a citation.` : ""}` : "";
+    data.source.readNote = (content.readNote || "") + condenseNote + partsNote + zoomNote + shortNote + timing();
     data.check = check;
     flags.push(...unreadFlags(content.skipped || [], content.skipReasons));
     if (content.ocrPages?.length) flags.push(`Page${content.ocrPages.length > 1 ? "s" : ""} ${pageList(content.ocrPages)} were read from scan OCR only (over the image limit). Verify names and dates from ${content.ocrPages.length > 1 ? "those pages" : "that page"}.`);
