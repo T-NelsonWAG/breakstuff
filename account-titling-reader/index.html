@@ -242,6 +242,22 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
 const REG_TYPES = ["Individual","Joint (JTWROS)","Joint (Tenants in common)","Community property","Revocable trust","Irrevocable trust","Traditional IRA","Roth IRA","Inherited IRA","SEP IRA","SIMPLE IRA","401(k) / Qualified plan","UTMA / UGMA","Estate","Corporation","LLC","Partnership","Foundation / Non-profit","Other"];
 const ROLES = ["Owner","Joint owner","Grantor","Trustee","Co-trustee","Successor trustee","POA agent","Authorized signer","Executor / Personal representative","UTMA/UGMA custodian","Minor","Entity officer / member","Other"];
 const DOC_TYPES = ["Custodian / brokerage statement","Trust agreement","Certification of trust","Trust amendment","Will","Power of attorney","Beneficiary designation","Entity document","Other"];
+// Succession is written as fixed labeled lines, so every read covers the same points and a
+// point that's missing shows up (successionFlags) instead of looking like "not in the document".
+const DEATH_LINES = [
+  ["First death", "what happens when the first grantor dies, including who then serves as trustee"],
+  ["Becomes irrevocable", "when the trust, or any part of it, becomes irrevocable"],
+  ["Separate trusts", "any division into separate trusts (survivor's, marital, QTIP, bypass or credit shelter, family, generation-skipping), when it happens, and who is trustee and who benefits from each"],
+  ["Last death", "what happens when the last grantor dies: outright distribution, continuing trusts (to what age or event) or pour-over to another trust"],
+  ["Power of appointment", "any power of appointment held by the surviving grantor or a beneficiary"]];
+const SUCC_LINES = [
+  ["Surviving co-trustee", "whether a remaining co-trustee continues alone when another dies, resigns or becomes incapacitated"],
+  ["Successors in order", "each named successor, numbered in order, and whether they serve alone or together, e.g. \"1) Jane A. Doe, alone (Art. VIII.B, p.9); 2) John B. Doe, alone (Art. VIII.B, p.9)\""],
+  ["Trigger", "what makes a successor take over"],
+  ["Incapacity standard", "how incapacity is determined"],
+  ["If none can serve", "who appoints a successor if every named one fails"],
+  ["Acceptance, bond or corporate trustee", "written acceptance, bond waiver, or any required corporate trustee"]];
+const SUCCESSION_DOC = /^(trust agreement|certification of trust|trust amendment|will)$/i;
 for (const [id, list] of [["dlReg", REG_TYPES], ["dlRole", ROLES], ["dlDoc", DOC_TYPES]]) {
   const dl = document.getElementById(id);
   for (const v of list) { const o = document.createElement("option"); o.value = v; dl.append(o); }
@@ -485,8 +501,62 @@ function normalize(raw, fileName) {
   // Kept in full (the editor shows the first few and a count of the rest), never cut silently.
   r.flags = (Array.isArray(raw.flags) ? raw.flags : []).map(str).filter(Boolean).slice(0, 30);
   r.fyi = (Array.isArray(raw.fyi) ? raw.fyi : []).map(str).filter(Boolean).slice(0, 30);
+  // Succession lines sometimes come back as a list or as label/value pairs; store them as lines.
+  for (const k of ["grantorDeath", "trusteeSuccession"]) {
+    const v = g[k];
+    if (Array.isArray(v)) r.registration[k] = v.map(str).filter(Boolean).join("\n");
+    else if (v && typeof v === "object") r.registration[k] = Object.entries(v).map(([a, b]) => `${a}: ${str(b)}`).join("\n");
+  }
   r.titleComposed = raw.titleComposed === true;
   return r;
+}
+
+// ---------- succession checks ----------
+// Done in code, so they run the same way every time: every labeled line is present, and the
+// successors named in "Successors in order" match the Parties list, in the same order.
+const succLine = (text, label) => {
+  const m = str(text).match(new RegExp(`^\\s*${escRe(label)}\\s*:\\s*(.*)$`, "im"));
+  return m ? m[1].trim() : null;
+};
+const ORDINALS = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, "1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5 };
+function successionFlags(data) {
+  const g = data.registration, out = [];
+  if (!SUCCESSION_DOC.test(str(data.source.docType)) && !str(g.grantorDeath) && !str(g.trusteeSuccession)) return out;
+  for (const [key, label, lines] of [["grantorDeath", "When the grantors die", DEATH_LINES], ["trusteeSuccession", "Trustee succession", SUCC_LINES]]) {
+    const missing = lines.map(([l]) => l).filter(l => succLine(g[key], l) == null);
+    if (missing.length) out.push(`${label} is missing: ${missing.join("; ")}. Fill in each from the document, or write "Not addressed in the pages read".`);
+  }
+  const line = succLine(g.trusteeSuccession, "Successors in order") || "";
+  if (!line || /^not (addressed|applicable)/i.test(line)) return out;
+  // Where each Successor-trustee party appears in the line (first name, then surname within a few words).
+  const find = (name) => {
+    const n = parseName(name);
+    if (!n) { const i = line.toLowerCase().indexOf(str(name).toLowerCase()); return str(name) && i >= 0 ? i : -1; }
+    const m = line.match(new RegExp(`\\b${escRe(n.first)}\\b[\\w .'’-]{0,30}?\\b${escRe(n.last)}\\b`, "i"));
+    return m ? m.index : -1;
+  };
+  const successors = data.parties.filter(p => /successor/i.test(p.role) && str(p.name));
+  const placed = [];
+  for (const p of successors) {
+    const at = find(p.name);
+    if (at < 0) { out.push(`Successor trustee "${p.name}" is in Parties but not in Trustee succession ("Successors in order"). Confirm the order of succession against the document.`); continue; }
+    const m = str(p.notes).match(/\b(1st|2nd|3rd|4th|5th|first|second|third|fourth|fifth)\b[^.;]{0,20}successor/i);
+    if (m) placed.push({ name: p.name, rank: ORDINALS[m[1].toLowerCase()], at });
+  }
+  const byRank = placed.slice().sort((a, b) => a.rank - b.rank), byLine = placed.slice().sort((a, b) => a.at - b.at);
+  if (byRank.some((p, i) => p !== byLine[i])) out.push(`Order of successor trustees differs: Parties notes give ${byRank.map(p => p.name).join(", then ")}; Trustee succession gives ${byLine.map(p => p.name).join(", then ")}. Confirm the order against the document.`);
+  // Names in the line that aren't in Parties at all.
+  const partyKeys = data.parties.map(p => str(p.name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()).filter(Boolean);
+  for (const piece of line.split(/\s*(?:\b\d+\)|;|,?\s+then\s+|,?\s+and\s+)\s*/i)) {
+    const chunk = piece.replace(/^(?:then|and|or|if|the|both|either)\s+/i, "");
+    const nm = (chunk.match(/^(?:[A-Z][\w'’.-]*\s+){1,4}[A-Z][\w'’-]+/) || [])[0];
+    const n = nm && parseName(nm);
+    if (!n) continue;
+    const known = data.parties.some(p => { const q = parseName(p.name); return q && q.first.toLowerCase() === n.first.toLowerCase() && q.last.toLowerCase() === n.last.toLowerCase(); })
+      || partyKeys.some(k => k.includes(nm.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()));
+    if (!known) out.push(`"${nm}" is named in Trustee succession but not in Parties. Add them, or correct the name.`);
+  }
+  return out;
 }
 
 // ---------- state ----------
@@ -642,8 +712,8 @@ function renderEditor() {
   ed.append(el("div", { class: "group" }, el("h3", { text: "Succession" }),
     el("p", { class: "small muted", text: "A summary of the document's provisions, not legal advice. Check it against the cited articles; a custodian works from the trust pages themselves." }),
     el("div", { class: "grid" },
-      textArea("When the grantors die", g, "grantorDeath", "f-death", "First death: … Last death: … (cite articles). Blank for statements."),
-      textArea("Trustee succession", g, "trusteeSuccession", "f-succ", "Who serves next, in what order, on what trigger; how incapacity is shown; who appoints if none can serve")
+      textArea("When the grantors die", g, "grantorDeath", "f-death", DEATH_LINES.map(([l]) => l + ": ").join("\n")),
+      textArea("Trustee succession", g, "trusteeSuccession", "f-succ", SUCC_LINES.map(([l]) => l + ": ").join("\n"))
     )
   ));
 
@@ -884,6 +954,11 @@ function missingForReview(d) {
   need(g.taxId, "tax ID");
   need(g.signingAuthority, "signing authority");
   if (/trust/i.test(g.registrationType)) { need(g.trustName, "trust name"); need(g.trustDate, "trust date"); need(g.governingState, "governing state"); }
+  // Read from the trust itself (not a statement): succession must be filled in; "Not addressed" lines count.
+  if (/trust/i.test(g.registrationType) && SUCCESSION_DOC.test(str(d.source.docType))) {
+    need(g.grantorDeath, "what happens when the grantors die (Re-read, or fill in each line)");
+    need(g.trusteeSuccession, "trustee succession (Re-read, or fill in each line)");
+  }
   if (!d.parties.some(p => str(p.name) && str(p.role))) miss.push("at least one party with a name and role");
   // Only Primary must total 100%. Contingent takers are conditional tiers (each child's
   // descendants, then an ultimate taker), so they can add past 100%; the reviewer explains it.
@@ -1380,7 +1455,7 @@ REGISTRATION
   - Will or estate document: "<executors joined by 'and'>, Executor(s) of the Estate of <decedent>". titleComposed true.
   - Entity document: the entity's exact legal name. titleComposed true.
   - Power of attorney or beneficiary designation alone: these do not set a title. Use the principal's or owner's name if it is clear what account it relates to, otherwise "". titleComposed true if you wrote a title.
-- registrationType: one of ${REG_TYPES.join("; ")}.
+- registrationType: one of ${REG_TYPES.join("; ")}. A trust the document shows is already irrevocable (for example, after a grantor's death) is "Irrevocable trust".
 - taxIdType: "SSN" or "EIN" only if the document states the number or says which to use; otherwise "".
 - trustName: the trust or entity name exactly as the document names itself, without the date or trustee names.
 - trustDate: use the trust's own identification clause ("may be referred to as ... dated ...") and the opening clause ("made the __ day of __"). If they disagree, use the identification clause and flag the conflict. For an amended or restated trust, use the original trust date unless the document says to refer to it by the restatement date.
@@ -1389,9 +1464,18 @@ REGISTRATION
 - signingAuthority: who may sign or act for the account and whether any one of them may act alone, citing the provision (e.g. "Either co-trustee may act alone (Art. VI.P)"). For a statement: the owners, and "joint" if joint.
 - source.docType: one of ${DOC_TYPES.join("; ")}. source.docDate: the date the document was signed or, for a statement, the statement period end.
 
-SUCCESSION (plain sentences citing the article for each point; "" when the document doesn't say, and always "" for a statement, POA or beneficiary designation)
-- grantorDeath: what the document says happens when a grantor dies and when the last grantor dies. Cover, where stated: whether the trust or any part becomes irrevocable; any split into sub-trusts (survivor's, marital, QTIP, bypass or credit shelter, family, generation-skipping), with who is trustee and who benefits from each; whether the remainder is paid out outright, held in continuing trusts (to what age or event) or poured into another trust; and any power of appointment the survivor holds. Example: "First death: splits into a Survivor's Trust (stays revocable) and a Bypass Trust (irrevocable); survivor is sole trustee of both (Art. V.A-C). Last death: residue in equal shares to the children, held in trust to age 30 (Art. VI.A-B)." For a will: who the estate passes to and whether anything is held in a testamentary trust.
-- trusteeSuccession: how trusteeship passes, in order. Cover, where stated: what happens when a current trustee dies, resigns or becomes incapacitated, and whether a surviving co-trustee continues alone; the named successors in order and whether they serve together or alone; how incapacity is determined (e.g. written certification by two physicians); who may appoint a successor if every named one fails (e.g. a majority of adult beneficiaries, or a court); and any required corporate trustee or bond waiver. Example: "If either grantor dies or is incapacitated, the other continues as sole trustee. Then Jane A. Doe, then John B. Doe, each serving alone. Incapacity: written certification by two licensed physicians. If none can serve, a majority of adult beneficiaries appoint one (Art. VIII.A-D)." For a will: the executors and alternates in order. Use the same names, spelled the same way, as in parties.
+SUCCESSION: grantorDeath and trusteeSuccession, for a trust agreement, amendment, restatement, certification of trust or will; "" for every other document. Each is a fixed list of labeled lines, in the order below, one per line, joined with "\\n". Every line appears, even when its answer is "Not addressed in the pages read".
+- Each line's answer is exactly one of: what the document states, with its citation, e.g. "(Art. V.B, p.7)"; "Implied by <citation>: <what>; not stated outright", when it only follows from the wording; "Not addressed in the pages read"; or "Not applicable: <why>" (e.g. "Not applicable: one grantor").
+- Report only what the document says. Never fill a gap with what trusts usually provide or what state law does by default, and never cite an article for something it does not say.
+- If an amendment or restatement changes trustees, successors or death provisions, describe the version now in force and cite both the original and the amending article.
+- Keep each line under 200 characters. Name people ("Jane A. Doe"); don't describe them ("the grantor's sister").
+- grantorDeath lines:
+${DEATH_LINES.map(([l, d]) => `  ${l}: <${d}>`).join("\n")}
+  For a will: First death and Separate trusts are "Not applicable: will"; Last death says who the estate passes to and any testamentary trust.
+- trusteeSuccession lines:
+${SUCC_LINES.map(([l, d]) => `  ${l}: <${d}>`).join("\n")}
+  For a will: Successors in order lists the executors and alternates; the other lines as they apply.
+- Everyone named in "Successors in order" is also in parties, spelled the same way, with role "Successor trustee" (or "Executor / Personal representative") and their place ("1st successor") in notes.
 
 PARTIES
 - One entry per person. If a person holds several roles, list them all in that entry's role, separated by ", ", most important first (e.g. "Grantor, Trustee"). Roles: ${ROLES.join("; ")}. Their notes and ref cover every role (e.g. "Co-trustee now; sole trustee if the other trustor dies (Sec. 10.3)").
@@ -1411,13 +1495,13 @@ BENEFICIARIES (who receives the assets when the owner or last grantor dies)
 - relationship as stated (daughter, sister of grantor, etc.). Put the city and state in notes if given.
 - ref: page and article.
 
-FLAGS (blockers only, at most 4): things that would stop the account from being opened correctly or that a custodian would reject. Only these count: a required signature, notarization or witness missing; a name, date or trust name that conflicts between pages; primary beneficiary shares that do not total 100%; no trustee currently able to act; pages missing (page numbers skip) or an amendment the document refers to but does not include. One sentence each, with a page reference. A complete, signed document usually has [].
+FLAGS (blockers only, at most 4): things that would stop the account from being opened correctly or that a custodian would reject. Only these count: a required signature, notarization or witness missing; a name, date or trust name that conflicts between pages; primary beneficiary shares that do not total 100%; no trustee currently able to act; pages missing (page numbers skip) or an amendment the document refers to but does not include; a grantor has already died (the document recites the death, or a surviving grantor signs or restates alone) and the trust divides into separate trusts on that death, so this account may belong to one of them, with its own title and EIN. One sentence each, with a page reference. A complete, signed document usually has [].
 
-FYI (at most 4, informational, not blockers): things worth knowing that do not stop the account, such as the document's age ("2009 document; confirm no later amendment or restatement"), the original held by a law firm, a blank or illegible Schedule A, a trust, estate or minor named as a contingent beneficiary, a springing POA, an estate that will need letters testamentary. One short sentence each, with a page reference. Never mention that the title was composed (use titleComposed), and never note standard boilerplate. An item goes in FLAGS or FYI, never both.
+FYI (at most 4, informational, not blockers): things worth knowing that do not stop the account, such as the document's age ("2009 document; confirm no later amendment or restatement"), the original held by a law firm, a blank or illegible Schedule A, a trust, estate or minor named as a contingent beneficiary, a springing POA, an estate that will need letters testamentary, a trust that will divide into separate trusts at a future death (new accounts and EINs will be needed then). One short sentence each, with a page reference. Never mention that the title was composed (use titleComposed), and never note standard boilerplate. An item goes in FLAGS or FYI, never both.
 
 HANDWRITING: list every handwritten fill-in that a field depends on (dates, day and month blanks, names, initials, numbers, checkboxes) in "handwriting": [{"page": 13, "area": "top", "what": "trust date in identification clause"}]. "page" is the PDF page number shown in this request (not the printed page number if they differ); "area" is "top", "middle" or "bottom" of that page (for a transcribed page, judge it from where the item falls in that page's text). List each once; there is no limit. Signatures need no entry unless a name must be read from one, and routine initials in a page footer need none. Use [] if there is no handwriting, or if the document came only as text.
 
-Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every successor named in trusteeSuccession is also in parties; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
+Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every succession line is present and either cited or marked Not addressed / Not applicable; everyone in "Successors in order" is in parties, in the same order as their notes; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
 
 Reply with only JSON in exactly this shape:
 {"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":""},"parties":[{"name":"","role":"","dob":"","taxId":"","address":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
@@ -1593,6 +1677,7 @@ function sampleMsg(e) {
 const VERIFY_INTRO = `You are double-checking an extraction another reader made from the document below. Check every value against the document itself, page by page:
 - Fix anything wrong: misread names, initials, dates, numbers, percentages, roles, beneficiary levels, the account title.
 - Add anything missed: parties, successor trustees, beneficiaries, signing authority, what happens on the grantors' deaths (grantorDeath), trustee succession (trusteeSuccession), handwritten spots in "handwriting".
+- In grantorDeath and trusteeSuccession: every labeled line must be present. Open each article cited and confirm it says what the line claims; fix the line or its citation, or change it to "Not addressed in the pages read". Something the document only implies must use the "Implied by" form. Search the whole document before leaving a line "Not addressed".
 - Remove anything the document does not support.
 - Change a value only when you can name the page that supports the new value. If the document is unclear, keep the original value rather than swapping one guess for another.
 - Do not reword notes, flags or FYI just for style, and do not count rewording as a correction.
@@ -1649,7 +1734,7 @@ function splitIntoParts(text, budget) {
   }));
 }
 
-const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), beneficiaries and shares, signing authority, governing law, amendments, signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. Page references keep the PDF page numbers shown here.`;
+const PART_INTRO = `You are continuing an extraction of one long document that is read in parts, because it is too long for one request. The extraction below covers the pages already read. Now read the pages given here and return the complete extraction, updated with everything these pages add or change: parties and their roles, successor provisions (trusteeSuccession), what happens on the grantors' deaths (grantorDeath), beneficiaries and shares, signing authority, governing law, amendments, signatures, flags, good-to-know items and the handwriting list. Keep everything already in the extraction unless these pages clearly correct it, and say so in a flag or note when they do. Never drop or change an item just because these pages don't mention it. In grantorDeath and trusteeSuccession, replace a "Not addressed in the pages read" line when these pages address it, and never turn an answered line into "Not addressed". Page references keep the PDF page numbers shown here.`;
 
 const VERIFY_PART_NOTE = (what, i, n) => `You see only part ${i + 1} of ${n} of a longer document (${what}). Check and correct only what this part shows. Never remove, blank or change anything it doesn't cover; that comes from other parts.`;
 
@@ -1938,7 +2023,7 @@ async function extract(content, fileName, keep) {
     const nameFlags = nameSpellingFlags(data, text)
       .filter(n => !data.flags.some(f => n.firsts.every(x => f.toLowerCase().includes(x.toLowerCase()))))
       .map(n => n.text);
-    data.flags = [...flags, ...nameFlags, ...data.flags];
+    data.flags = [...flags, ...nameFlags, ...successionFlags(data), ...data.flags];
     if (keep) {
       data.notes = keep.data.notes;
       // Earlier flags and their resolution notes always survive a Re-read; new ones are added.
