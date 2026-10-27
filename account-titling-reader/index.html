@@ -286,7 +286,7 @@ function blank() {
   return {
     household: "",
     source: { fileName: "", docType: "", docDate: "", sharepointUrl: "", readNote: "", textSaved: false, fileHash: "" },
-    registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", governingState: "", accountNumber: "", signingAuthority: "", grantorDeath: "", trusteeSuccession: "", trustOverview: "" },
+    registration: { accountTitle: "", registrationType: "", taxIdType: "", taxId: "", trustName: "", trustDate: "", restatementDate: "", amendmentDates: "", governingState: "", accountNumber: "", signingAuthority: "", grantorDeath: "", trusteeSuccession: "", trustOverview: "" },
     parties: [],
     beneficiaries: [],
     flags: [],
@@ -708,6 +708,8 @@ function renderEditor() {
       field("Source account #", g, "accountNumber", { mono: true, id: "f-acct", sensitive: true }),
       field("Trust / entity name", g, "trustName", { id: "f-trust", span: false }),
       field("Trust date", g, "trustDate", { mono: true, id: "f-trustdate", placeholder: "YYYY-MM-DD" }),
+      field("Most recent restatement", g, "restatementDate", { mono: true, id: "f-restated", placeholder: "YYYY-MM-DD, or blank if none" }),
+      field("Amendments", g, "amendmentDates", { mono: true, id: "f-amended", placeholder: "YYYY-MM-DD; YYYY-MM-DD" }),
       field("Governing state", g, "governingState", { id: "f-state" }),
       field("Signing authority", g, "signingAuthority", { span: true, id: "f-sign", placeholder: "Who can sign, and whether one may act alone" }),
       textArea("Trust overview (opens the client summary PDF)", g, "trustOverview", "f-overview", "3–4 plain sentences a client can read: the trust, who created it, who manages it, what happens when the grantors die")
@@ -1014,7 +1016,7 @@ async function freshIfUnchanged(id) {
 const HIST_FIELDS = [["household", "Client / household"], ["source.docType", "Document type"], ["source.docDate", "Document date"],
   ["source.sharepointUrl", "SharePoint link"], ["registration.accountTitle", "Account title"], ["registration.registrationType", "Registration type"],
   ["registration.taxIdType", "Tax ID type"], ["registration.taxId", "Tax ID"], ["registration.trustName", "Trust / entity name"],
-  ["registration.trustDate", "Trust date"], ["registration.governingState", "Governing state"], ["registration.accountNumber", "Source account #"],
+  ["registration.trustDate", "Trust date"], ["registration.restatementDate", "Most recent restatement"], ["registration.amendmentDates", "Amendments"], ["registration.governingState", "Governing state"], ["registration.accountNumber", "Source account #"],
   ["registration.signingAuthority", "Signing authority"], ["registration.grantorDeath", "When the grantors die"],
   ["registration.trusteeSuccession", "Trustee succession"], ["registration.trustOverview", "Trust overview"], ["notes", "Team notes"]];
 const PARTY_FIELDS = [["role", "role(s)"], ["dob", "date of birth"], ["taxId", "SSN / TIN"], ["address", "address"], ["notes", "notes"], ["ref", "found on"]];
@@ -1155,7 +1157,7 @@ function buildRecordPdf(d, meta) {
   y = table(["Field", "Value"], [
     ["Account title", t(g.accountTitle) + (d.titleComposed ? "  (composed from the document; confirm against custodian titling rules)" : "  (copied from the document)")],
     ["Registration type", t(g.registrationType)], ["Tax ID type", t(g.taxIdType)], ["Tax ID", t(g.taxId)],
-    ["Trust / entity name", t(g.trustName)], ["Trust date", t(g.trustDate)], ["Governing state", t(g.governingState)],
+    ["Trust / entity name", t(g.trustName)], ["Trust date", t(g.trustDate)], ["Most recent restatement", t(g.restatementDate)], ["Amendments", t(g.amendmentDates)], ["Governing state", t(g.governingState)],
     ["Source account #", t(g.accountNumber)], ["Signing authority", t(g.signingAuthority)], ["Trust overview", t(g.trustOverview)],
   ], y, { 0: { cellWidth: 130, fontStyle: "bold" } });
 
@@ -1274,7 +1276,7 @@ function buildClientPdf(d, meta) {
   let y = 124;
   doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(...darkGrey);
   for (const ln of doc.splitTextToSize(t(g.trustName), W - 2 * M)) { doc.text(ln, M, y); y += 24; }
-  if (str(g.trustDate)) y = para(`Dated ${longDate(g.trustDate)}`, y - 4, { size: 11 });
+  if (str(g.trustDate)) y = para(`Dated ${longDate(g.trustDate)}${str(g.restatementDate) ? `, restated ${longDate(g.restatementDate)}` : ""}`, y - 4, { size: 11 });
   doc.setFillColor(...green); doc.rect(M, y, 64, 3, "F");   // the one green moment on the page
   y += 28;
 
@@ -1285,6 +1287,8 @@ function buildClientPdf(d, meta) {
   y = facts([
     ["Trust name", t(g.trustName)],
     ["Trust date", longDate(g.trustDate) || "Not stated"],
+    ["Most recent restatement", longDate(g.restatementDate) || "None in the documents reviewed"],
+    ["Amendments", str(g.amendmentDates) ? str(g.amendmentDates).split(/\s*;\s*/).map(longDate).join("; ") : "None in the documents reviewed"],
     ["Type", t(g.registrationType)],
     ["Governing law", t(g.governingState) || "Not named in the trust document"],
     ["Grantors", grantors.join("; ") || "Not stated"],
@@ -1622,7 +1626,9 @@ REGISTRATION
 - registrationType: one of ${REG_TYPES.join("; ")}. A trust the document shows is already irrevocable (for example, after a grantor's death) is "Irrevocable trust".
 - taxIdType: "SSN" or "EIN" only if the document states the number or says which to use; otherwise "".
 - trustName: the trust or entity name exactly as the document names itself, without the date or trustee names.
-- trustDate: use the trust's own identification clause ("may be referred to as ... dated ...") and the opening clause ("made the __ day of __"). If they disagree, use the identification clause and flag the conflict. For an amended or restated trust, use the original trust date unless the document says to refer to it by the restatement date.
+- trustDate: use the trust's own identification clause ("may be referred to as ... dated ...") and the opening clause ("made the __ day of __"). If they disagree, use the identification clause and flag the conflict.
+- restatementDate: the date of the most recent restatement (an instrument that restates the trust agreement in its entirety) included in or referred to by the document, as YYYY-MM-DD; "" if none.
+- amendmentDates: the date of every amendment included in or referred to by the document (not restatements), as YYYY-MM-DD, oldest first, joined with "; "; "" if none. If an amendment's date isn't stated, write its name (e.g. "First Amendment, date not stated"). For an amended or restated trust, use the original trust date unless the document says to refer to it by the restatement date.
 - governingState: the state whose law governs the trust or entity, from its governing-law clause; for a statement, "".
 - accountNumber: the account number on a statement; otherwise "". If a statement shows several accounts, extract the main or first one and list the others (title and last 4 digits) in one FYI item.
 - signingAuthority: who may sign or act for the account and whether any one of them may act alone, citing the provision (e.g. "Either co-trustee may act alone (Art. VI.P)"). For a statement: the owners, and "joint" if joint.
@@ -1670,7 +1676,7 @@ HANDWRITING: list every handwritten fill-in that a field depends on (dates, day 
 Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every succession line is present and either cited or marked Not addressed / Not applicable; everyone in "Successors in order" is in parties, in the same order as their notes; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
 
 Reply with only JSON in exactly this shape:
-{"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","address":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
+{"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","address":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
 
 const MAX_SCAN_PAGES = 150;   // scanned pages transcribed per document; beyond this, pages are named as unread, with the reason
 
