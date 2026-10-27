@@ -192,7 +192,7 @@ details.checked ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); d
       </div>
       <div class="pulls">
         <div><b>Registration &amp; titling</b><span class="muted">Exact account title, registration type, tax ID, trust name and date, governing state</span></div>
-        <div><b>Parties</b><span class="muted">Owners, grantors, trustees and successors, POA agents, signers, with DOB, SSN and address</span></div>
+        <div><b>Parties</b><span class="muted">Owners, grantors, trustees and successors, POA agents, signers, with DOB and SSN</span></div>
         <div><b>Beneficiaries</b><span class="muted">Primary and contingent, relationship, percentages, per stirpes</span></div>
         <div><b>Succession</b><span class="muted">What happens when the grantors die, and who succeeds as trustee, in what order and on what trigger</span></div>
       </div>
@@ -298,7 +298,7 @@ function blank() {
     titleComposed: false
   };
 }
-const blankParty = () => ({ name: "", role: "", dob: "", taxId: "", address: "", notes: "", ref: "" });
+const blankParty = () => ({ name: "", role: "", dob: "", taxId: "", notes: "", ref: "" });
 const blankBene = () => ({ level: "Primary", name: "", relationship: "", percentage: "", dob: "", taxId: "", perStirpes: false, notes: "", ref: "" });
 
 // ---------- name spelling check ----------
@@ -477,7 +477,7 @@ function mergeParties(list) {
     m.role = joinUnique(m.role, p.role, ", ");
     m.notes = joinUnique(m.notes, p.notes, "; ");
     m.ref = joinUnique(m.ref, p.ref, "; ");
-    for (const f of ["dob", "taxId", "address"]) if (!m[f]) m[f] = p[f];
+    for (const f of ["dob", "taxId"]) if (!m[f]) m[f] = p[f];
   }
   return out;
 }
@@ -741,7 +741,6 @@ function renderEditor() {
           field("Role(s)", p, "role", { list: "dlRole", id: `p${i}-role`, placeholder: "e.g. Grantor, Trustee" }),
           field("Date of birth", p, "dob", { mono: true, id: `p${i}-dob` }),
           field("SSN / TIN", p, "taxId", { mono: true, id: `p${i}-tid`, sensitive: true }),
-          field("Address", p, "address", { wide: true, id: `p${i}-addr` }),
           field("Notes", p, "notes", { wide: true, id: `p${i}-notes` }),
           field("Found on", p, "ref", { id: `p${i}-ref`, placeholder: "e.g. p.28 (printed 27), Sec. 10.3" })
         ),
@@ -1019,7 +1018,7 @@ const HIST_FIELDS = [["household", "Client / household"], ["source.docType", "Do
   ["registration.trustDate", "Trust date"], ["registration.restatementDate", "Most recent restatement"], ["registration.amendmentDates", "Amendments"], ["registration.governingState", "Governing state"], ["registration.accountNumber", "Source account #"],
   ["registration.signingAuthority", "Signing authority"], ["registration.grantorDeath", "When the grantors die"],
   ["registration.trusteeSuccession", "Trustee succession"], ["registration.trustOverview", "Trust overview"], ["notes", "Team notes"]];
-const PARTY_FIELDS = [["role", "role(s)"], ["dob", "date of birth"], ["taxId", "SSN / TIN"], ["address", "address"], ["notes", "notes"], ["ref", "found on"]];
+const PARTY_FIELDS = [["role", "role(s)"], ["dob", "date of birth"], ["taxId", "SSN / TIN"], ["notes", "notes"], ["ref", "found on"]];
 const BENE_FIELDS = [["level", "level"], ["relationship", "relationship"], ["percentage", "share %"], ["dob", "date of birth"], ["taxId", "SSN / TIN"],
   ["perStirpes", "per stirpes"], ["notes", "notes"], ["ref", "found on"]];
 const histVal = (k, v) => {
@@ -1167,9 +1166,9 @@ function buildRecordPdf(d, meta) {
   }
 
   y = section("Parties", y);
-  y = table(["Name", "Role(s)", "Date of birth", "SSN / TIN", "Address", "Notes", "Found on"],
-    d.parties.map(p => [t(p.name), t(p.role), t(p.dob), t(p.taxId), t(p.address), t(p.notes), t(p.ref)]), y,
-    { 0: { cellWidth: 110 }, 1: { cellWidth: 90 }, 2: { cellWidth: 62 }, 3: { cellWidth: 70 }, 4: { cellWidth: 90 }, 6: { cellWidth: 80 } });
+  y = table(["Name", "Role(s)", "Date of birth", "SSN / TIN", "Notes", "Found on"],
+    d.parties.map(p => [t(p.name), t(p.role), t(p.dob), t(p.taxId), t(p.notes), t(p.ref)]), y,
+    { 0: { cellWidth: 110 }, 1: { cellWidth: 90 }, 2: { cellWidth: 62 }, 3: { cellWidth: 70 }, 5: { cellWidth: 80 } });
 
   y = section("Beneficiaries", y);
   y = table(["Level", "Name", "Relationship", "Share %", "Per stirpes", "Date of birth", "SSN / TIN", "Notes", "Found on"],
@@ -1505,7 +1504,8 @@ function normalizeSaved(raw) {
   r.household = str(raw.household);
   Object.assign(r.source, raw.source || {});
   Object.assign(r.registration, raw.registration || {});
-  r.parties = (raw.parties || []).map(p => Object.assign(blankParty(), p));
+  // Only the current party fields: an address saved before v34 is dropped at the next save.
+  r.parties = (raw.parties || []).map(p => { const b = blankParty(); for (const k of Object.keys(b)) if (p?.[k] != null) b[k] = p[k]; return b; });
   r.beneficiaries = (raw.beneficiaries || []).map(b => Object.assign(blankBene(), b));
   r.flags = Array.isArray(raw.flags) ? raw.flags.slice() : [];
   r.fyi = Array.isArray(raw.fyi) ? raw.fyi.map(str).filter(Boolean) : [];
@@ -1612,7 +1612,7 @@ HOW TO READ
 
 FORMATTING
 - Names of people: normal capitalization ("JANE A. DOE" becomes "Jane A. Doe"). Keep middle initials and suffixes (Jr., III). Keep entity names and their abbreviations as written (LLC, LP, Inc.).
-- Copy SSNs/TINs, account numbers, dates of birth and addresses whenever shown. Copy a masked number exactly as shown (e.g. "XXX-XX-1234"); never fill in hidden digits. A residence such as "of Naples, Florida" counts as the address ("Naples, FL").
+- Copy SSNs/TINs, account numbers and dates of birth whenever shown. Copy a masked number exactly as shown (e.g. "XXX-XX-1234"); never fill in hidden digits. Do not record addresses.
 - Dates: YYYY-MM-DD.
 
 REGISTRATION
@@ -1676,7 +1676,7 @@ HANDWRITING: list every handwritten fill-in that a field depends on (dates, day 
 Before answering, check: every value traces to a page; the trust date, trust name and trustee names match everywhere you used them (title, parties, registration, trusteeSuccession); every succession line is present and either cited or marked Not addressed / Not applicable; everyone in "Successors in order" is in parties, in the same order as their notes; primary beneficiaries total 100 or a flag says why not; contingent tiers that add past 100% (each child's descendants plus an ultimate taker) are explained in their notes, not flagged.
 
 Reply with only JSON in exactly this shape:
-{"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","address":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
+{"household":"","source":{"docType":"","docDate":""},"registration":{"accountTitle":"","registrationType":"","taxIdType":"","taxId":"","trustName":"","trustDate":"","restatementDate":"","amendmentDates":"","governingState":"","accountNumber":"","signingAuthority":"","grantorDeath":"","trusteeSuccession":"","trustOverview":""},"parties":[{"name":"","role":"","dob":"","taxId":"","notes":"","ref":""}],"beneficiaries":[{"level":"Primary","name":"","relationship":"","percentage":null,"dob":"","taxId":"","perStirpes":false,"notes":"","ref":""}],"titleComposed":false,"flags":[],"fyi":[],"handwriting":[]}`;
 
 const MAX_SCAN_PAGES = 150;   // scanned pages transcribed per document; beyond this, pages are named as unread, with the reason
 
@@ -1930,7 +1930,7 @@ function compactText(text) {
 
 const CONDENSE_INTRO = `You are preparing one section of a long legal or financial document for a reader who will extract the account registration, parties, beneficiaries and succession provisions from the whole document at once. The whole document does not fit in one request, so copy from the pages below, word for word, every passage that reader could need, and leave out the rest.
 Keep, copied exactly with their headings and section numbers:
-- title, identification, recital and opening clauses; every name of a trust, trustor or grantor, trustee, successor, trust protector, beneficiary, executor or agent; dates; governing law; tax IDs, account numbers and addresses;
+- title, identification, recital and opening clauses; every name of a trust, trustor or grantor, trustee, successor, trust protector, beneficiary, executor or agent; dates; governing law; tax IDs and account numbers;
 - who may act for, sign for or bind the trust, and whether co-trustees act alone or together (often headed "Acts of Co-Trustees"), and the governing-law clause;
 - every clause about revoking or amending; the trustors' rights in trust property and any power of appointment; what happens on each death or incapacity; becoming irrevocable; division into separate trusts; distributions, beneficiaries, shares, per stirpes, ages, ultimate or "family disaster" takers and anyone excluded; appointing, resigning, removing and succeeding trustees, co-trustees acting alone, incapacity standards, bond, acceptance, corporate trustees, and any protector's power over trustees; amendments and restatements and what they replace; signatures, notary and witness blocks and signing dates; the heading of any schedule of assets;
 - every [handwritten: ...], [illegible], [blank], [signature: ...] and [stamp: ...] mark, and each page's printed page number line (e.g. "Page 27").
