@@ -965,8 +965,6 @@ function missingForReview(d) {
   const need = (v, label) => { if (!str(v)) miss.push(label); };
   need(g.accountTitle, "account title");
   need(g.registrationType, "registration type");
-  need(g.taxIdType, "tax ID type");
-  need(g.taxId, "tax ID");
   need(g.signingAuthority, "signing authority");
   if (/trust/i.test(g.registrationType)) { need(g.trustName, "trust name"); need(g.trustDate, "trust date"); need(g.governingState, "governing state"); }
   // Read from the trust itself (not a statement): succession must be filled in; "Not addressed" lines count.
@@ -980,8 +978,7 @@ function missingForReview(d) {
   const primary = d.beneficiaries.filter(b => b.level === "Primary" && (str(b.name) || str(b.percentage)));
   const primarySum = primary.reduce((a, b) => a + (parseFloat(b.percentage) || 0), 0);
   if (primary.length && Math.abs(primarySum - 100) >= 0.01) miss.push("primary beneficiary shares adding to 100%");
-  // The source document must be one click away for whoever reviews or audits the record.
-  if (!/^https:\/\//i.test(str(d.source.sharepointUrl))) miss.push("a SharePoint link to the document");
+  // Tax ID and the SharePoint link are optional (owner's decision, tool v32).
   const open = d.flags.filter(f => !flagNote(d, f)).length;
   if (open) miss.push(`a resolution note for ${open === 1 ? "the unresolved flag" : `each of the ${open} unresolved flags`}`);
   return miss;
